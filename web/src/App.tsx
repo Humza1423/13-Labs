@@ -181,6 +181,7 @@ function App() {
     setRoute(readLocation());
     if (pathChanged) {
       window.scrollTo(0, 0);
+      if (content.current) content.current.scrollTop = 0;
       requestAnimationFrame(() => { if (!readLocation().eventId) content.current?.focus({ preventScroll: true }); });
     }
   }
