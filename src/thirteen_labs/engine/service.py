@@ -15,6 +15,14 @@ from thirteen_labs.store import RunStore, encode
 logger = logging.getLogger(__name__)
 CASE_SECONDS = 35
 QUEUE_LIMIT = 8
+INCOMPLETE_REASONS = {
+    "deadline": "The case reached its deadline.",
+    "tool_limit": "The case reached its tool call limit.",
+    "turn_limit": "The case reached its customer turn limit.",
+    "no_resolution": "The defender did not record a final resolution.",
+    "provider_stopped": "The provider stopped before completing the exchange.",
+    "provider_error": "The defender provider did not finish the case.",
+}
 
 
 class ShiftEngine:
@@ -150,9 +158,13 @@ class ShiftEngine:
             return await dispatcher(call_id, tool_name, args)
 
         last_message = None
+        conversation_id = None
 
         async def emit_agent(kind: str, payload: dict):
-            nonlocal last_message
+            nonlocal last_message, conversation_id
+            if kind == "provider_message":
+                conversation_id = conversation_id or public_id(payload.get("id"))
+                return
             if kind != "message":
                 return
             text = payload.get("text")
@@ -168,17 +180,18 @@ class ShiftEngine:
             first_message=scenario.facts.first_message, deadline_s=CASE_SECONDS,
         )
         incomplete = None
-        conversation_id = None
         source = self.source
         try:
             async with asyncio.timeout(CASE_SECONDS):
                 result = await self.driver.run_case(spec, next_customer_turn, call_tool, emit_agent)
-            conversation_id = public_id(result.conversation_id)
+            conversation_id = public_id(result.conversation_id) or conversation_id
             source = result.source
             if (self.mode == "fixture") != (source == "fixture"):
                 incomplete = "The defender returned results with unexpected provenance."
             elif not result.completed:
-                incomplete = "The defender did not complete the support exchange."
+                incomplete = INCOMPLETE_REASONS.get(
+                    result.incomplete_reason, "The defender did not complete the support exchange.",
+                )
             elif not dispatcher.resolution:
                 incomplete = "The defender did not record a final resolution."
             if isinstance(result.final_text, str) and result.final_text.strip()[:1600] != last_message:

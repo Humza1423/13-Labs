@@ -46,11 +46,13 @@ class AnthropicDefenderDriver:
                         tool_choice={"type": "none" if tool_calls >= tool_limit else "auto"},
                     )
                     # Messages is stateless. The first provider message ID identifies this exchange.
-                    conversation_id = conversation_id or reply.id
+                    if conversation_id is None:
+                        conversation_id = reply.id
+                        await emit("provider_message", {"id": reply.id})
                     if reply.stop_reason not in {"tool_use", "end_turn", "stop_sequence"}:
-                        return result("The provider stopped before completing the exchange.")
+                        return result("provider_stopped")
                     if tool_calls >= tool_limit and any(block.type == "tool_use" for block in reply.content):
-                        return result("The provider requested another tool after the tool budget was exhausted.")
+                        return result("tool_limit")
                     messages.append({"role": "assistant", "content": reply.content})
                     results = []
                     for block in reply.content:
@@ -74,19 +76,19 @@ class AnthropicDefenderDriver:
                         messages.append({"role": "user", "content": results})
                         continue
                     if overflow:
-                        return result("The case reached its tool call limit.")
+                        return result("tool_limit")
                     if resolved:
                         return result()
                     if customer_turns >= min(spec.max_customer_turns, 4):
-                        return result("The case reached its customer turn limit.")
+                        return result("turn_limit")
                     if tool_calls >= tool_limit:
-                        return result("The case reached its tool call limit.")
+                        return result("tool_limit")
                     next_turn = await next_customer_turn(final_text or "")
                     if not next_turn:
-                        return result("The defender did not record a final resolution.")
+                        return result("no_resolution")
                     customer_turns += 1
                     messages.append({"role": "user", "content": next_turn})
         except TimeoutError:
-            return result("The case reached its deadline.")
+            return result("deadline")
         except APIError:
-            return result("The defender provider did not finish the case.")
+            return result("provider_error")

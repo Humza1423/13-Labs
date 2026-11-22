@@ -92,7 +92,8 @@ async def test_provider_tool_ids_results_and_transcript(monkeypatch):
         for block, output in zip(blocks, outputs)
     ]}
     followup.assert_awaited_once_with("Order number?")
-    assert emit.await_count == 2
+    assert emit.await_args_list[0].args == ("provider_message", {"id": "msg_1"})
+    assert emit.await_count == 3
 
 
 async def test_over_budget_parallel_batch_returns_individual_errors(monkeypatch):
@@ -177,3 +178,32 @@ def test_http_shift_preserves_provider_ids_and_revised_workflow(tmp_path, monkey
     assert all(case["score"]["passed"] is False for case in transcript["cases"])
     assert [request["system"] for request in requests] == [BASELINE_WORKFLOW] * 6 + [REVISED_WORKFLOW] * 8
     assert {request["model"] for request in requests} == {"lab-model"}
+
+
+async def test_engine_timeout_retains_observed_provider_receipt(tmp_path, monkeypatch):
+    from thirteen_labs.engine import service
+    from thirteen_labs.engine.evaluation import BASELINE_WORKFLOW
+    from thirteen_labs.scenarios import SCENARIOS
+    from thirteen_labs.store import RunStore
+    from dataclasses import asdict
+
+    async def handler(payload, index):
+        if index == 1:
+            return message(index, [tool(1, "lookup_order", {"orderId": SCENARIOS[0].order_id})], "tool_use")
+        await asyncio.sleep(10)
+        raise AssertionError("request survived its deadline")
+
+    mock_messages(monkeypatch, handler)
+    engine = service.ShiftEngine(RunStore(tmp_path / "interrupted.db"), driver=adapter())
+    try:
+        run_id, _ = engine.store.start(
+            "owner", "start", {"candidateId": "monitor-support", "suiteId": "probation-v1"}, "live",
+            [asdict(case) for case in SCENARIOS], "hash", engine.configuration, available=True, capacity=True,
+        )
+        monkeypatch.setattr(service, "CASE_SECONDS", .3)
+        await engine._case(run_id, SCENARIOS[0], "baseline", BASELINE_WORKFLOW)
+        record = engine.store.cases(run_id)[0]
+        assert record["outcome"] == "incomplete" and record["conversationId"] == "msg_1"
+        assert "score" not in record and record["evidenceIds"]
+    finally:
+        await engine.close()
