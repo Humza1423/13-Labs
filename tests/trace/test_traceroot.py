@@ -236,3 +236,26 @@ def test_fixture_shift_instruments_actual_tool_calls_per_version(tmp_path):
     assert "refund.authorization" not in held_out
     assert held_out["case.outcome"].attributes["status"] == "scored"
     sink.close()
+
+
+def test_app_wires_sink_only_when_tracing_is_configured(tmp_path):
+    configured = create_app(settings=Settings(
+        state_db=str(tmp_path / "traced.sqlite"), demo_mode="fixture", traceroot_api_key="key"))
+    with TestClient(configured) as client:
+        engine = configured.state.shift_engine
+        assert isinstance(engine.trace_sink, TraceRootSink)
+        assert client.get("/api/health").json()["capabilities"]["traces"] is True
+    injected, _ = sink_and_spans()
+    overridden = create_app(
+        settings=Settings(state_db=str(tmp_path / "injected.sqlite"), demo_mode="fixture",
+                          traceroot_api_key="key"),
+        trace_sink=injected)
+    with TestClient(overridden):
+        assert overridden.state.shift_engine.trace_sink is injected
+    bare = create_app(settings=Settings(
+        state_db=str(tmp_path / "bare.sqlite"), demo_mode="fixture",
+        traceroot_api_key="", otel_exporter_otlp_endpoint=""))
+    with TestClient(bare) as client:
+        assert bare.state.shift_engine.trace_sink is None
+        assert client.get("/api/health").json()["capabilities"]["traces"] is False
+    injected.close()

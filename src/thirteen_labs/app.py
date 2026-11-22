@@ -18,6 +18,7 @@ from .contracts import Capabilities, HealthResponse
 from .engine.fixture import FixtureDriver
 from .engine.service import ShiftEngine
 from .integrations.elevenlabs import ElevenLabsDriver, configured_driver, voice_enabled
+from .integrations.traceroot import sink_from_settings
 from .ports import AuthorizationGate, DefenderDriver, TraceSink
 from .routes import register_routers
 from .routes.voice import VoiceSessions
@@ -39,6 +40,8 @@ def create_app(
     authorization_source: Literal["local", "alter"] = "local",
 ) -> FastAPI:
     settings = settings or get_settings()
+    if trace_sink is None:
+        trace_sink = sink_from_settings(settings)
     fixture_mode = settings.demo_mode == "fixture"
     if defender_driver is None and not fixture_mode:
         defender_driver = configured_driver(settings)
@@ -79,6 +82,8 @@ def create_app(
             if sessions is not None:
                 sessions.store.close()
             await engine.close()
+            if close_sink := getattr(trace_sink, "close", None):
+                close_sink()
 
     app = FastAPI(title="13 Labs", docs_url="/api/docs", openapi_url="/api/openapi.json", lifespan=lifespan)
     app.state.settings = settings
