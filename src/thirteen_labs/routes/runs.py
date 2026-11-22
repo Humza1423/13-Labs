@@ -6,7 +6,7 @@ import secrets
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel
 
 from thirteen_labs.contracts import EventsPage, RetestRequest, ReviewRequest, RunView, ScenariosResponse
 from thirteen_labs.scenarios import CANDIDATE, public_scenarios
@@ -16,12 +16,6 @@ router = APIRouter(prefix="/api")
 SESSION_COOKIE = "thirteen_owner"
 SESSION_PATTERN = re.compile(r"[A-Za-z0-9_-]{43}")
 MAX_KEY = 128
-
-
-class StartRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
-    candidateId: str = Field(min_length=1, max_length=80)
-    suiteId: str = Field(min_length=1, max_length=80)
 
 
 def owner_digest(token: str | None) -> str:
@@ -50,9 +44,19 @@ def key(request: Request) -> str:
     return value
 
 
+async def json_object(request: Request) -> dict:
+    try:
+        body = await request.json()
+    except ValueError:
+        raise RunError(422, "invalid_request", "The request body does not match the API contract.") from None
+    if not isinstance(body, dict):
+        raise RunError(422, "invalid_request", "The request body must be a JSON object.")
+    return body
+
+
 async def input_body(request: Request, model: type[BaseModel]) -> BaseModel:
     try:
-        return model.model_validate(await request.json())
+        return model.model_validate(await json_object(request))
     except ValueError:
         raise RunError(422, "invalid_request", "The request body does not match the API contract.") from None
 
@@ -69,14 +73,14 @@ async def scenarios(request: Request):
 @router.post("/runs", status_code=202, response_model=RunView)
 async def start_run(request: Request):
     try:
-        selection = await input_body(request, StartRequest)
+        selection = await json_object(request)
         request_owner = owner(request)
         token = None
         if not request_owner:
             token = secrets.token_urlsafe(32)
             request_owner = owner_digest(token)
         engine = request.app.state.shift_engine
-        run_id = engine.start(request_owner, key(request), selection.model_dump())
+        run_id = engine.start(request_owner, key(request), selection)
         response = reply(RunView.model_validate(engine.view(run_id, request_owner)).dump(), 202)
         if token is not None:
             response.set_cookie(

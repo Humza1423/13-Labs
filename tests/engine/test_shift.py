@@ -1,16 +1,15 @@
 import asyncio
 import time
-from contextlib import asynccontextmanager
 
 import pytest
-from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from thirteen_labs.app import create_app
+from thirteen_labs.config import Settings
 from thirteen_labs.engine.fixture import FixtureDriver
 from thirteen_labs.engine.service import ShiftEngine
 from thirteen_labs.engine.tools import CaseDispatcher
-from thirteen_labs.ports import AuthorizationResult
-from thirteen_labs.routes.runs import router
+from thirteen_labs.ports import AuthorizationResult, DriverResult
 from thirteen_labs.scenarios import SCENARIOS
 from thirteen_labs.store import RunStore
 
@@ -21,17 +20,7 @@ RETEST_HEADERS = {"Idempotency-Key": "retest-one"}
 
 @pytest.fixture
 def client(tmp_path):
-    @asynccontextmanager
-    async def lifespan(app):
-        engine = ShiftEngine(RunStore(tmp_path / "test.sqlite"), driver=FixtureDriver(), mode="fixture", source="fixture")
-        app.state.shift_engine = engine
-        try:
-            yield
-        finally:
-            await engine.close()
-
-    app = FastAPI(lifespan=lifespan)
-    app.include_router(router)
+    app = create_app(settings=Settings(state_db=str(tmp_path / "test.sqlite"), demo_mode="fixture"))
     with TestClient(app) as client:
         yield client
 
@@ -232,8 +221,45 @@ def test_incomplete_legs_are_excluded_from_comparable_denominators(tmp_path):
             assert view["status"] == "complete" and result["outcome"] == "incomplete"
             assert "score" not in result and "provider-internal" not in str(view)
             assert "2/3 comparable pairs" in view["review"]["recommendation"]
-            assert "1 incomplete legs" in view["review"]["recommendation"]
+            assert "1 incomplete leg." in view["review"]["recommendation"]
         finally:
             await engine.close()
 
     asyncio.run(exercise())
+
+
+def test_app_selects_injected_driver_and_preserves_provider_provenance(tmp_path):
+    class MockProvider:
+        name = "test-provider"
+
+        async def run_case(self, spec, next_customer_turn, call_tool, emit):
+            outcome = "escalated"
+            final_text = "I'll send this claim for review."
+            await call_tool("resolution", "record_resolution", {"outcome": outcome})
+            await emit("message", {"text": final_text})
+            return DriverResult(
+                conversation_id=f"mock-{spec.case_id}", final_text=final_text, completed=True, source="elevenlabs",
+            )
+
+    app = create_app(
+        settings=Settings(state_db=str(tmp_path / "provider.sqlite"), demo_mode="live", demo_run_limit=1),
+        defender_driver=MockProvider(),
+    )
+    with TestClient(app) as client:
+        assert client.get("/api/health").json()["capabilities"]["batch"] is True
+        path = start(client)
+        run = await_status(client, path, "ready_to_retest")
+        assert run["mode"] == "live"
+        assert run["cases"][0]["conversationId"] == "mock-monitor-conflict"
+        assert all(case["source"] == "elevenlabs" for case in run["cases"])
+        limit = client.post("/api/runs", json=SELECTION, headers={"Idempotency-Key": "start-second"})
+        assert limit.status_code == 429 and "Retry-After" in limit.headers
+
+
+def test_live_mode_stays_unavailable_without_a_provider(tmp_path):
+    app = create_app(settings=Settings(state_db=str(tmp_path / "no-provider.sqlite"), demo_mode="live"))
+    with TestClient(app) as client:
+        assert client.get("/api/health").json()["capabilities"]["batch"] is False
+        start_response = client.post("/api/runs", json=SELECTION, headers=START_HEADERS)
+        assert start_response.status_code == 503
+        assert start_response.json()["error"]["code"] == "batch_unavailable"

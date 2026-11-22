@@ -7,6 +7,10 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 
+from pydantic import ValidationError
+
+from thirteen_labs.contracts import CreateRunRequest
+
 
 def now() -> str:
     return datetime.now(UTC).isoformat()
@@ -91,6 +95,7 @@ class RunStore:
     def start(
         self, owner: str, key: str, selection: dict, mode: str, snapshot: list[dict],
         baseline_hash: str, configuration: dict, *, available: bool, capacity: bool,
+        live_limit: int = 20,
     ) -> tuple[str, bool]:
         with self._transaction():
             existing = self.db.execute(
@@ -100,8 +105,10 @@ class RunStore:
                 if existing["start_input"] != encode(selection):
                     raise RunError(409, "idempotency_conflict", "This key was already used for another selection.")
                 return existing["id"], False
-            if selection != {"candidateId": "monitor-support", "suiteId": "probation-v1"}:
-                raise RunError(422, "invalid_selection", "Select the monitor support probation suite.")
+            try:
+                CreateRunRequest.model_validate(selection)
+            except ValidationError:
+                raise RunError(422, "invalid_selection", "Select the monitor support probation suite.") from None
             if not available:
                 raise RunError(503, "batch_unavailable", "A defender driver is unavailable.", True)
             if not capacity:
@@ -112,7 +119,7 @@ class RunStore:
                     "SELECT COUNT(*) AS total, COUNT(CASE WHEN owner=? THEN 1 END) AS owned "
                     "FROM runs WHERE mode='live' AND started>=?", (owner, cutoff),
                 ).fetchone()
-                if count["total"] >= 36 or count["owned"] >= 4:
+                if count["total"] >= live_limit or count["owned"] >= 4:
                     raise RunError(429, "live_start_limit", "The lab reached its hourly live start limit.", True)
             run_id = uuid4().hex
             timestamp = now()

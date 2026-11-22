@@ -54,6 +54,7 @@ def create_app(
             authorization=authorization_gate,
             authorization_source=authorization_source,
             voice_available=settings.capabilities["voice"],
+            live_run_limit=settings.demo_run_limit,
         )
         app.state.shift_engine = engine
         try:

@@ -148,16 +148,16 @@ def recommendation(cases: list[dict], mode: str) -> str:
             f"{verified}/{len(legs)} carrier checks"
         )
 
-    holdout_status = "incomplete"
+    holdout_summary = "The held-out case was incomplete."
     if held_out and "score" in held_out:
-        holdout_status = "passed" if held_out["score"]["passed"] else "failed"
+        holdout_summary = "The held-out case passed." if held_out["score"]["passed"] else "The held-out case failed."
     incomplete = sum(case["outcome"] == "incomplete" for case in cases)
     pending = sum(case["authorization"] == "pending" for case in cases)
     prefix = {"fixture": "Scripted fixture. ", "replay": "Recorded replay. "}.get(mode, "")
     return (
         f"{prefix}{len(pairs)}/{len(all_paired)} comparable pairs. "
-        f"Baseline: {report([pair[0] for pair in pairs])}. "
-        f"Revised: {report([pair[1] for pair in pairs])}. "
-        f"Held-out case: {holdout_status}. {incomplete} incomplete legs. "
+        f"The baseline recorded {report([pair[0] for pair in pairs])}. "
+        f"The revised workflow recorded {report([pair[1] for pair in pairs])}. "
+        f"{holdout_summary} {incomplete} incomplete {'leg' if incomplete == 1 else 'legs'}. "
         f"{pending} pending authorizations. Review the evidence before granting any production authority."
     )

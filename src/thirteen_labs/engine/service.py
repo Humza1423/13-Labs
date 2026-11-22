@@ -8,7 +8,7 @@ from dataclasses import asdict
 from thirteen_labs.engine.evaluation import BASELINE_WORKFLOW, investigate, recommendation, score, workflow_hash
 from thirteen_labs.engine.tools import TOOL_SCHEMAS, CaseDispatcher, public_id
 from thirteen_labs.contracts import RunEvent
-from thirteen_labs.ports import DriverSpec
+from thirteen_labs.ports import AuthorizationGate, DefenderDriver, DriverSpec, TraceSink
 from thirteen_labs.scenarios import CANDIDATE, SCENARIOS, Scenario, customer_turns
 from thirteen_labs.store import RunStore, encode
 
@@ -19,9 +19,10 @@ QUEUE_LIMIT = 8
 
 class ShiftEngine:
     def __init__(
-        self, store: RunStore, *, driver=None, mode="live", source="model",
-        provider_config=None, authorization=None, authorization_source="local", trace_sink=None,
-        voice_available=False,
+        self, store: RunStore, *, driver: DefenderDriver | None = None, mode="live", source="model",
+        provider_config=None, authorization: AuthorizationGate | None = None,
+        authorization_source="local", trace_sink: TraceSink | None = None, voice_available=False,
+        live_run_limit=20,
     ):
         self.store = store
         self.driver = driver
@@ -31,6 +32,7 @@ class ShiftEngine:
         self.authorization_source = authorization_source
         self.trace_sink = trace_sink
         self.voice_available = voice_available
+        self.live_run_limit = live_run_limit
         self.configuration = {
             "provider": provider_config or {},
             "driver": getattr(driver, "name", type(driver).__qualname__),
@@ -57,6 +59,7 @@ class ShiftEngine:
             owner, key, selection, self.mode, [asdict(case) for case in SCENARIOS],
             workflow_hash(BASELINE_WORKFLOW), self.configuration,
             available=self.driver is not None, capacity=len(self.tasks) < QUEUE_LIMIT,
+            live_limit=self.live_run_limit,
         )
         if created:
             self._schedule(run_id, "baseline")
@@ -166,11 +169,15 @@ class ShiftEngine:
         )
         incomplete = None
         conversation_id = None
+        source = self.source
         try:
             async with asyncio.timeout(CASE_SECONDS):
                 result = await self.driver.run_case(spec, next_customer_turn, call_tool, emit_agent)
             conversation_id = public_id(result.conversation_id)
-            if not result.completed:
+            source = result.source
+            if (self.mode == "fixture") != (source == "fixture"):
+                incomplete = "The defender returned results with unexpected provenance."
+            elif not result.completed:
                 incomplete = "The defender did not complete the support exchange."
             elif not dispatcher.resolution:
                 incomplete = "The defender did not record a final resolution."
@@ -190,7 +197,7 @@ class ShiftEngine:
             "version": version, "outcome": outcome, "authorization": dispatcher.authorization_status,
             "requestedCents": dispatcher.requested_cents, "executedCents": executed,
             "carrierCheck": dispatcher.carrier_check, "authorizationSource": dispatcher.decision_source,
-            "source": self.source, "versionHash": version_hash,
+            "source": source, "versionHash": version_hash,
             "evidenceIds": [event["id"] for event in events],
         }
         if conversation_id:
