@@ -36,7 +36,6 @@ from tests.qa.qa_support import (
     create_run,
     drain_events,
     fetch_events_page,
-    get_run,
     make_client,
     new_key,
     post_retest,
@@ -183,12 +182,11 @@ def test_events_paging_invariants(client):
 
 
 def test_retest_rejected_before_ready_to_retest(client):
-    run = _created_run_view(client)
-    view = get_run(client, run["id"])
+    view = _created_run_view(client)
     if view["status"] not in {"queued", "baseline_running", "investigating"}:
-        pytest.skip(f"run advanced to {view['status']} before the early-reject check")
+        pytest.skip(f"run reached {view['status']} before the early-reject check")
     assert view["actions"]["canRetest"] is False
-    resp = post_retest(client, run["id"], "rev-anything", key=new_key())
+    resp = post_retest(client, view["id"], "rev-anything", key=new_key())
     assert_error_shape(resp)
 
 

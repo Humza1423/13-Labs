@@ -23,8 +23,15 @@ RUN_TIMEOUT_S = 180.0
 
 
 def route_registered(path: str) -> bool:
-    """True when a route with this exact path template is on the app."""
+    """True when a route with this exact path template is on the app.
+
+    Checks the flattened OpenAPI paths first: newer FastAPI versions keep
+    include_router'd routers as lazy wrappers in app.routes, so scanning
+    app.routes alone misses them. Falls back to a direct route scan.
+    """
     app = create_app()
+    if path in app.openapi().get("paths", {}):
+        return True
     return any(getattr(route, "path", None) == path for route in app.routes)
 
 
