@@ -17,7 +17,6 @@ from .config import Settings, get_settings
 from .contracts import Capabilities, HealthResponse
 from .engine.fixture import FixtureDriver
 from .engine.service import ShiftEngine
-from .integrations.anthropic import AnthropicDefenderDriver
 from .ports import AuthorizationGate, DefenderDriver, TraceSink
 from .routes import register_routers
 from .store import RunStore
@@ -39,6 +38,8 @@ def create_app(
 ) -> FastAPI:
     settings = settings or get_settings()
     if defender_driver is None and settings.demo_mode != "fixture" and settings.anthropic_api_key:
+        from .integrations.anthropic import AnthropicDefenderDriver
+
         defender_driver = AnthropicDefenderDriver(settings.anthropic_api_key, settings.lab_model)
     fixture_mode = settings.demo_mode == "fixture"
     driver = FixtureDriver() if fixture_mode else defender_driver

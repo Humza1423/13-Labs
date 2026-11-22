@@ -49,6 +49,8 @@ class AnthropicDefenderDriver:
                     conversation_id = conversation_id or reply.id
                     if reply.stop_reason not in {"tool_use", "end_turn", "stop_sequence"}:
                         return result("The provider stopped before completing the exchange.")
+                    if tool_calls >= tool_limit and any(block.type == "tool_use" for block in reply.content):
+                        return result("The provider requested another tool after the tool budget was exhausted.")
                     messages.append({"role": "assistant", "content": reply.content})
                     results = []
                     for block in reply.content:
