@@ -24,6 +24,7 @@ class Settings:
     anthropic_api_key: str = field(default_factory=lambda: _env("ANTHROPIC_API_KEY"))
     lab_model: str = field(default_factory=lambda: _env("LAB_MODEL", "claude-haiku-5-5"))
     traceroot_api_key: str = field(default_factory=lambda: _env("TRACEROOT_API_KEY"))
+    traceroot_dashboard_url: str = field(default_factory=lambda: _env("TRACEROOT_DASHBOARD_URL"))
     otel_exporter_otlp_endpoint: str = field(default_factory=lambda: _env("OTEL_EXPORTER_OTLP_ENDPOINT"))
     alter_api_key: str = field(default_factory=lambda: _env("ALTER_API_KEY"))
     alter_grant_id: str = field(default_factory=lambda: _env("ALTER_GRANT_ID"))

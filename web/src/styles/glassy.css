@@ -364,3 +364,6 @@ body { margin: 0; background: #ede0d0; }
 .voice-case > p { margin-bottom: 5px; }
 .gd-stage[data-view="evidence"] .stage-track, .fpb .stage-track { margin: 0 0 14px; }
 .key-event { border-inline-start: 3px solid var(--gd-teal); padding-inline-start: 9px; }
+@media (forced-colors: active) {
+  .stage-track li[aria-current] { outline: 2px solid Highlight; }
+}

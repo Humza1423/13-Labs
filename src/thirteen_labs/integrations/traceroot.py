@@ -20,6 +20,7 @@ import logging
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime
+from urllib.parse import urlsplit
 
 from opentelemetry import trace as trace_api
 from opentelemetry.context import Context
@@ -72,7 +73,14 @@ class TraceRootSink:
         self._lock = threading.Lock()
         self._traces: dict[tuple[str, str, str], _CaseTrace] = {}
         self._refs: dict[tuple[str, str, str], dict] = {}
-        self._dashboard_url = dashboard_url
+        self._dashboard_url = None
+        if dashboard_url and "{trace_id}" in dashboard_url:
+            try:
+                url = urlsplit(dashboard_url)
+                if url.scheme in ("http", "https") and url.hostname and url.username is None and url.password is None:
+                    self._dashboard_url = dashboard_url
+            except ValueError:
+                logger.warning("Invalid TraceRoot dashboard URL template; omitting the link.")
         self._provider = self._build_provider(api_key, endpoint, service_name, exporter)
         self._tracer = (
             self._provider.get_tracer("thirteen_labs.integrations.traceroot")
@@ -295,4 +303,7 @@ def sink_from_settings(settings) -> TraceRootSink | None:
     endpoint = getattr(settings, "otel_exporter_otlp_endpoint", "")
     if not (api_key or endpoint):
         return None
-    return TraceRootSink(api_key=api_key, endpoint=endpoint or None)
+    return TraceRootSink(
+        api_key=api_key, endpoint=endpoint or None,
+        dashboard_url=getattr(settings, "traceroot_dashboard_url", "") or None,
+    )

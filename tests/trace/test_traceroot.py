@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
-from opentelemetry.sdk.trace.export import SpanExporter
+from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace import StatusCode
 
@@ -177,6 +177,19 @@ def test_dashboard_url_template():
     sink.close()
 
 
+@pytest.mark.parametrize("template", [
+    "https://example.test/",
+    "javascript:open('{trace_id}')",
+    "https://reader:secret@example.test/traces/{trace_id}",
+])
+def test_dashboard_reference_omits_unusable_templates(template):
+    sink, _ = sink_and_spans(dashboard_url=template)
+    sink.observe(event("case_scored", actor="evaluator", label="Case evaluated"))
+    ref = sink.trace_ref("run-1", "monitor-valid", "baseline")
+    assert len(ref["traceId"]) == 32 and "url" not in ref
+    sink.close()
+
+
 def await_status(client, path, status):
     for _ in range(150):
         response = client.get(path)
@@ -189,24 +202,38 @@ def await_status(client, path, status):
     pytest.fail(f"Did not reach {status}: {data!r}")
 
 
-def test_fixture_shift_instruments_actual_tool_calls_per_version(tmp_path):
-    sink, exporter = sink_and_spans()
-    app = create_app(
-        settings=Settings(state_db=str(tmp_path / "traced.sqlite"), demo_mode="fixture"),
-        trace_sink=sink,
-    )
-    with TestClient(app) as client:
-        response = client.post(
-            "/api/runs", json=SELECTION, headers={"Idempotency-Key": "trace-shift"})
-        assert response.status_code == 202, response.text
-        path = "/api/runs/" + response.json()["id"]
-        baseline = await_status(client, path, "ready_to_retest")
-        response = client.post(
-            path + "/retest", json={"revisionId": baseline["revision"]["id"]},
-            headers={"Idempotency-Key": "trace-retest"})
-        assert response.status_code == 202, response.text
-        complete = await_status(client, path, "complete")
+def complete_fixture_shift(client):
+    response = client.post(
+        "/api/runs", json=SELECTION, headers={"Idempotency-Key": "trace-shift"})
+    assert response.status_code == 202, response.text
+    path = "/api/runs/" + response.json()["id"]
+    baseline = await_status(client, path, "ready_to_retest")
+    response = client.post(
+        path + "/retest", json={"revisionId": baseline["revision"]["id"]},
+        headers={"Idempotency-Key": "trace-retest"})
+    assert response.status_code == 202, response.text
+    complete = await_status(client, path, "complete")
+    events = []
+    cursor = 0
+    while True:
+        page = client.get(path + "/events", params={"after": cursor}).json()
+        events.extend(page["events"])
+        if page["nextAfter"] == cursor:
+            break
+        cursor = page["nextAfter"]
+    return complete, events
 
+
+def test_fixture_shift_instruments_actual_tool_calls_per_version(tmp_path):
+    template = "https://example.test/projects/test-project/traces?traceId={trace_id}"
+    sink, exporter = sink_and_spans(dashboard_url=template)
+    settings = Settings(state_db=str(tmp_path / "traced.sqlite"), demo_mode="fixture")
+    with TestClient(create_app(settings=settings, trace_sink=sink)) as client:
+        complete, events = complete_fixture_shift(client)
+
+    with TestClient(create_app(settings=settings)) as restarted:
+        persisted_cases = restarted.get("/api/runs/" + complete["id"]).json()["cases"]
+    assert persisted_cases == complete["cases"]
     roots = [span for span in exporter.get_finished_spans() if span.parent is None]
     legs = {(root.attributes["case.id"], root.attributes["defender.version"]) for root in roots}
     assert legs == {
@@ -220,7 +247,19 @@ def test_fixture_shift_instruments_actual_tool_calls_per_version(tmp_path):
         assert root.attributes["run.id"] == run_id
     for case in complete["cases"]:
         ref = sink.trace_ref(run_id, case["caseId"], case["version"])
-        assert ref and ref["provider"] == "traceroot" and len(ref["traceId"]) == 32
+        assert case["trace"] == ref
+        assert ref["provider"] == "traceroot" and len(ref["traceId"]) == 32
+        assert ref["url"] == template.replace("{trace_id}", ref["traceId"])
+        if case["caseId"] == "monitor-valid":
+            refund = next(span for span in exporter.get_finished_spans()
+                          if span.name == "tool.request_refund"
+                          and format(span.context.trace_id, "032x") == ref["traceId"])
+            call = next(event for event in events if event["id"] == refund.attributes["event.id"])
+            assert call["type"] == "tool_called" and call["tool"] == "request_refund"
+            assert call["id"] in case["evidenceIds"]
+            assert call["runId"] == refund.attributes["run.id"] == run_id
+            assert call["caseId"] == refund.attributes["case.id"] == "monitor-valid"
+            assert call["version"] == refund.attributes["defender.version"] == case["version"]
 
     by_case = {}
     for span in exporter.get_finished_spans():
@@ -238,9 +277,35 @@ def test_fixture_shift_instruments_actual_tool_calls_per_version(tmp_path):
     sink.close()
 
 
-def test_app_wires_sink_only_when_tracing_is_configured(tmp_path):
+def test_export_failure_preserves_seven_legs_and_the_local_timeline(tmp_path):
+    class UnavailableExporter(SpanExporter):
+        attempts = 0
+
+        def export(self, spans):
+            self.attempts += 1
+            return SpanExportResult.FAILURE
+
+    exporter = UnavailableExporter()
+    sink = TraceRootSink(exporter=exporter)
+    settings = Settings(state_db=str(tmp_path / "outage.sqlite"), demo_mode="fixture")
+    with TestClient(create_app(settings=settings, trace_sink=sink)) as client:
+        complete, events = complete_fixture_shift(client)
+    assert exporter.attempts > 0
+    assert len(complete["cases"]) == 7
+    assert all(case["outcome"] != "incomplete" for case in complete["cases"])
+    assert [event["seq"] for event in events] == list(range(1, len(events) + 1))
+    assert events[-1]["stage"] == "review"
+    for case in complete["cases"]:
+        if case["caseId"] == "monitor-valid":
+            assert case["executedCents"] == 90_000
+            assert any(event["id"] in case["evidenceIds"] and event["type"] == "ledger_written"
+                       for event in events)
+
+
+def test_app_wires_sink_only_when_tracing_is_configured(tmp_path, monkeypatch):
     configured = create_app(settings=Settings(
-        state_db=str(tmp_path / "traced.sqlite"), demo_mode="fixture", traceroot_api_key="key"))
+        state_db=str(tmp_path / "traced.sqlite"), demo_mode="fixture", traceroot_api_key="key",
+        traceroot_dashboard_url="https://example.test/traces/{trace_id}"))
     with TestClient(configured) as client:
         engine = configured.state.shift_engine
         assert isinstance(engine.trace_sink, TraceRootSink)
@@ -257,5 +322,10 @@ def test_app_wires_sink_only_when_tracing_is_configured(tmp_path):
         traceroot_api_key="", otel_exporter_otlp_endpoint=""))
     with TestClient(bare) as client:
         assert bare.state.shift_engine.trace_sink is None
+        assert client.get("/api/health").json()["capabilities"]["traces"] is False
+    monkeypatch.delenv("TRACEROOT_API_KEY", raising=False)
+    monkeypatch.delenv("OTEL_EXPORTER_OTLP_ENDPOINT", raising=False)
+    disabled = TraceRootSink()
+    with TestClient(create_app(settings=configured.state.settings, trace_sink=disabled)) as client:
         assert client.get("/api/health").json()["capabilities"]["traces"] is False
     injected.close()
