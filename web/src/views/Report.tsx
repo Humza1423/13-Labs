@@ -45,9 +45,10 @@ function Gauge({ completed, total }: RunView["progress"]) {
         {Array.from({ length: ticks }, (_, i) => {
           const angle = Math.PI + i / (ticks - 1) * Math.PI;
           const active = total > 0 && i < Math.round(completed / total * ticks);
+          const innerRadius = i % 7 === 0 ? 91 : 98;
           return <line key={i} x1={130 + 114 * Math.cos(angle)} y1={127 + 114 * Math.sin(angle)}
-            x2={130 + 98 * Math.cos(angle)} y2={127 + 98 * Math.sin(angle)}
-            stroke={active ? (i < 38 ? "#b3baff" : "#ffb37a") : "#777985"} strokeWidth="2.8" strokeLinecap="round" />;
+            x2={130 + innerRadius * Math.cos(angle)} y2={127 + innerRadius * Math.sin(angle)}
+            stroke={active ? "#a9b2ff" : "#777985"} strokeWidth="2.8" strokeLinecap="round" />;
         })}
       </svg>
       <div className="gauge-label"><strong>{completed}<small> / {total}</small></strong><span>Case legs complete</span></div>
@@ -56,16 +57,16 @@ function Gauge({ completed, total }: RunView["progress"]) {
 }
 
 const glyphs: Record<string, string[]> = {
-  "0": ["01110","11011","11011","11011","11011","11011","01110"],
+  "0": ["01110","10001","10011","10101","11001","10001","01110"],
   "1": ["00100","01100","00100","00100","00100","00100","01110"],
-  "2": ["01110","11011","00011","00110","01100","11000","11111"],
-  "3": ["11110","00011","00011","01110","00011","00011","11110"],
-  "4": ["00110","01110","11010","11010","11111","00010","00010"],
-  "5": ["11111","11000","11000","11110","00011","11011","01110"],
-  "6": ["00110","01100","11000","11110","11011","11011","01110"],
-  "7": ["11111","00011","00110","00100","01100","01000","01000"],
-  "8": ["01110","11011","11011","01110","11011","11011","01110"],
-  "9": ["01110","11011","11011","01111","00011","00110","01100"],
+  "2": ["01110","10001","00001","00010","00100","01000","11111"],
+  "3": ["11111","00010","00100","00010","00001","10001","01110"],
+  "4": ["00010","00110","01010","10010","11111","00010","00010"],
+  "5": ["11111","10000","11110","00001","00001","10001","01110"],
+  "6": ["00110","01000","10000","11110","10001","10001","01110"],
+  "7": ["11111","00001","00010","00100","01000","01000","01000"],
+  "8": ["01110","10001","10001","01110","10001","10001","01110"],
+  "9": ["01110","10001","10001","01111","00001","00010","01100"],
   "/": ["00001","00010","00010","00100","01000","01000","10000"],
   "—": ["00000","00000","00000","11111","00000","00000","00000"],
 };
@@ -76,8 +77,8 @@ function DotNumber({ value }: { value: string }) {
       <span className="sr-only">{value === "—" ? "No eligible legs" : value}</span>
       <svg viewBox={`0 0 ${value.length * 30 - 3} 35`} aria-hidden="true">
         {[...value].flatMap((char, index) => glyphs[char].flatMap((row, y) => [...row].map((dot, x) =>
-          <circle key={`${index}-${y}-${x}`} cx={index * 30 + x * 5.2 + 3} cy={y * 5 + 2.5} r="1.95"
-            fill="currentColor" opacity={dot === "1" ? 1 : .17} />)))}
+          <circle key={`${index}-${y}-${x}`} cx={index * 30 + x * 5.2 + 3} cy={y * 5 + 2.5} r={dot === "1" ? 1.8 : 1}
+            fill="currentColor" opacity={dot === "1" ? 1 : .1} />)))}
       </svg>
     </span>
   );
@@ -209,10 +210,10 @@ export function Report({ run, events, actionLocked, review, open, labHref, evide
           <p role="status">{copyStatus}</p>
           {showLink && <input aria-label="Run link" readOnly value={shareUrl} onFocus={event => event.currentTarget.select()} />}
         </section>
-        <section className="report-card metric-strip" aria-label="Outcome metrics">
+        <section className="metric-strip" aria-label="Outcome metrics">
           {after.slice(1).map((metric, index) => {
             const previous = before[index + 1];
-            return <div key={metric.name}>
+            return <div className="report-card metric-tile" key={metric.name}>
               <h3>{metric.name}</h3>
               <p>{!viewingHeld && <><span aria-label="Baseline">{tally(previous)}</span><ArrowRight size={16} /></>}<strong aria-label="Revised">{tally(metric)}</strong></p>
               <div className="comparison-bars" aria-hidden="true">
