@@ -2,6 +2,8 @@
 
 import asyncio
 import json
+import runpy
+from pathlib import Path
 from unittest.mock import AsyncMock
 
 import httpx2 as httpx
@@ -149,3 +151,29 @@ def test_app_selects_driver(tmp_path, mode, key, kind):
                                                 demo_mode="live", anthropic_api_key="key"),
                                defender_driver=injected)) as client:
         assert client.app.state.shift_engine.driver is injected
+
+
+def test_http_shift_preserves_provider_ids_and_revised_workflow(tmp_path, monkeypatch, capsys):
+    from thirteen_labs.engine.evaluation import BASELINE_WORKFLOW, REVISED_WORKFLOW
+
+    async def handler(payload, index):
+        if len(payload["messages"]) == 1:
+            return message(index, [tool(index, "record_resolution", {"outcome": "needs_info"})], "tool_use")
+        return message(index, [{"type": "text", "text": "Could you send more information?"}], "end_turn")
+
+    requests = mock_messages(monkeypatch, handler)
+    settings = Settings(state_db=str(tmp_path / "mock-provider.db"), demo_mode="live",
+                        anthropic_api_key="mock-key", lab_model="lab-model")
+    with TestClient(create_app(settings=settings)) as client:
+        script = Path(__file__).resolve().parents[2] / 'scripts' / 'measure_live_shift.py'
+        runpy.run_path(str(script))['measure'](client)
+    _, output = capsys.readouterr().out.split("\n", 1)
+    transcript = json.loads(output)
+    assert len(transcript["cases"]) == 7
+    assert transcript["baselineRefundEventIds"] == []
+    assert transcript["baselineEvidence"]
+    assert len({case["conversationId"] for case in transcript["cases"]}) == 7
+    assert all(case["source"] == "model" and case["outcome"] == "needs_info" for case in transcript["cases"])
+    assert all(case["score"]["passed"] is False for case in transcript["cases"])
+    assert [request["system"] for request in requests] == [BASELINE_WORKFLOW] * 6 + [REVISED_WORKFLOW] * 8
+    assert {request["model"] for request in requests} == {"lab-model"}
