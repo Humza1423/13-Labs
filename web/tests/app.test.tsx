@@ -150,3 +150,18 @@ test("the recording flow waits for each phase and keeps the next action visible"
   expect(await screen.findByText("This run has been reviewed.")).toBeTruthy();
   expect(screen.getByRole<HTMLButtonElement>("button", { name: "Mark reviewed" }).disabled).toBe(true);
 });
+
+test("an interrupted baseline preserves partial evidence without unlocking the next step", async () => {
+  history.replaceState(null, "", "/runs/server-run?view=lab");
+  vi.spyOn(api, "run").mockResolvedValue({ ...serverRun, status: "failed", finding: undefined, revision: undefined, cases: [] });
+  vi.spyOn(api, "events").mockResolvedValue({ events: [events[0]], nextAfter: 1 });
+  render(<App />);
+  const inspect = await screen.findByRole<HTMLButtonElement>("button", {
+    name: "Inspect the evidence", description: "The shift ended before the baseline finished.",
+  });
+  expect(inspect.disabled).toBe(true);
+  fireEvent.click(screen.getByRole("link", { name: "Open partial evidence" }));
+  expect(await screen.findByRole<HTMLButtonElement>("button", {
+    name: "Apply in lab and retest", description: "The shift was interrupted.",
+  })).toHaveProperty("disabled", true);
+});

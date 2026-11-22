@@ -22,6 +22,8 @@ export function Lab({
     : run?.status === "failed" ? shown.at(-1)?.stage : run ? phase[run.status] : undefined;
   const active = run?.status === "queued" || run?.status === "baseline_running"
     || run?.status === "investigating" || run?.status === "retest_running";
+  const canInspect = run?.status === "investigating" || run?.status === "ready_to_retest"
+    || (run?.status === "failed" && events.some(event => event.stage !== "baseline"));
   const focusStage: StageId = run?.mode === "replay" ? shown.at(-1)?.stage ?? "baseline"
     : stage === "retest" || stage === "review" ? "retest" : "baseline";
   const floorEvents = shown.filter(event => event.stage === focusStage && (!event.caseId || event.caseId === "monitor-conflict"));
@@ -74,12 +76,14 @@ export function Lab({
               : run.status === "retest_running" ? <>
                 <button className="button primary" disabled aria-describedby="lab-wait">View report<ArrowRight size={18} /></button>
                 <p className="action-reason" id="lab-wait" role="status">The retest is running.</p>
-              </> : ["investigating", "ready_to_retest", "failed"].includes(run.status) ? <>
+              </> : canInspect ? <>
                 <a className="button primary" href={evidenceHref}>Inspect the evidence<ArrowRight size={18} /></a>
                 {run.status === "investigating" && <p className="action-reason" role="status">13 is reviewing the tool history.</p>}
               </> : <>
                 <button className="button primary" disabled aria-describedby="lab-wait">Inspect the evidence<ArrowRight size={18} /></button>
-                <p className="action-reason" id="lab-wait" role="status">{statusLabel[run.status]} · Available when the baseline finishes.</p>
+                <p className="action-reason" id="lab-wait" role="status">{run.status === "failed" ? "The shift ended before the baseline finished."
+                  : `${statusLabel[run.status]} · Available when the baseline finishes.`}</p>
+                {run.status === "failed" && events.length > 0 && <a className="text-action" href={evidenceHref}>Open partial evidence<ArrowRight size={16} /></a>}
               </>}
             {!run && recordedHref && <a className="text-action" href={recordedHref}>Open recorded run <ArrowRight size={16} /></a>}
           </div>
