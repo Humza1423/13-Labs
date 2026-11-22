@@ -12,8 +12,8 @@ const filters = [
 ] as const;
 type Filter = typeof filters[number]["id"];
 
-export function Evidence({ run, events, selected, open, retest, actionLocked, recordedHref, labHref, reportHref }: {
-  run?: RunView; events: RunEvent[]; selected?: string; open: OpenEvidence; retest: () => void;
+export function Evidence({ run, preview, events, selected, open, retest, actionLocked, recordedHref, labHref, reportHref }: {
+  run?: RunView; preview: boolean; events: RunEvent[]; selected?: string; open: OpenEvidence; retest: () => void;
   actionLocked: boolean; recordedHref?: string; labHref: string; reportHref: string;
 }) {
   const [filter, setFilter] = useState<Filter>("all");
@@ -26,7 +26,7 @@ export function Evidence({ run, events, selected, open, retest, actionLocked, re
     <>
       <div className="view-heading">
         <div>
-          <p className="eyebrow"><span className="eyebrow-mark" /> {run ? provenance[run.mode] : "Probation shift"}</p>
+          <p className="eyebrow"><span className="eyebrow-mark" /> {run ? provenance(run, preview) : "Probation shift"}</p>
           <h1>Evidence</h1>
           <p className="view-description">Follow the conversation, tool activity, and authorization decisions.</p>
         </div>
@@ -37,7 +37,7 @@ export function Evidence({ run, events, selected, open, retest, actionLocked, re
         <p>{finding?.observation ?? (!run ? "Start a shift in the lab to collect evidence."
           : run.status === "failed" ? "The shift ended before 13 published a finding."
           : "13 publishes a finding after reviewing the baseline tool history.")}</p>
-        {finding && <EvidenceChips ids={finding.eventIds} open={open} />}
+        {finding && <EvidenceChips events={events} ids={finding.eventIds} open={open} />}
         {!run && <a className="button secondary" href={labHref}>Open lab<ArrowRight size={17} /></a>}
         {run?.status === "failed" && recordedHref && <a className="text-action" href={recordedHref}>Open recorded run <ArrowRight size={16} /></a>}
       </section>
@@ -56,7 +56,7 @@ export function Evidence({ run, events, selected, open, retest, actionLocked, re
         </div>
         <div className="revision-meta">
           <p>{revision.source === "rule" ? "Rule-proposed" : "Model-proposed"} · {revision.fromVersionHash} → {revision.versionHash}</p>
-          <EvidenceChips ids={revision.eventIds} open={open} />
+          <EvidenceChips events={events} ids={revision.eventIds} open={open} />
         </div>
       </section>}
       <section className="gd-card timeline-panel" aria-labelledby="timeline-title">

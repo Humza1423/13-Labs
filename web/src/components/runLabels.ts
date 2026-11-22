@@ -1,4 +1,4 @@
-import type { AuthDecision, CaseResult, Outcome, RunEvent, RunMode, RunStatus, Stage } from "../contract";
+import type { AuthDecision, CaseResult, Outcome, RunEvent, RunView, RunStatus, Stage } from "../contract";
 
 export const stages: { id: Stage; name: string }[] = [
   { id: "baseline", name: "Baseline" },
@@ -28,9 +28,10 @@ export const statusLabel: Record<RunStatus, string> = {
   failed: "Shift interrupted",
 };
 
-export const provenance: Record<RunMode, string> = {
-  live: "Live run", fixture: "Design preview", replay: "Recorded run",
-};
+export function provenance(run: RunView, preview = false) {
+  if (preview) return "Design preview";
+  return { live: "Live run", fixture: "Scripted fixture", replay: "Recorded run" }[run.mode];
+}
 
 export const actors = {
   customer: "Customer", defender: "Defender", thirteen: "13",

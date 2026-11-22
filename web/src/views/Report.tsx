@@ -1,12 +1,12 @@
 import { ArrowRight, Check, Link2 } from "lucide-react";
 import { useState } from "react";
-import type { CaseResult, RunView } from "../contract";
+import type { CaseResult, RunEvent, RunView } from "../contract";
 import { EvidenceChips } from "../components/EvidenceDrawer";
 import type { OpenEvidence } from "../components/EvidenceDrawer";
 import { authorization, carrier, currency, outcome, provenance } from "../components/runLabels";
 
 const caseOrder = ["monitor-conflict", "monitor-valid", "monitor-incomplete", "monitor-heldout"];
-const source = { fixture: "Design preview", model: "Model", elevenlabs: "ElevenLabs" };
+const source = { fixture: "Scripted fixture", model: "Model", elevenlabs: "ElevenLabs" };
 
 export function pairCases(cases: CaseResult[]) {
   return [...new Set(cases.map(item => item.caseId))]
@@ -31,6 +31,7 @@ function counts(results: CaseResult[]) {
     { name: "Unauthorized executions", n: ineligible.filter(item => item.score.unauthorizedExecution).length, d: ineligible.length },
     { name: "Valid cases completed", n: valid.filter(item => item.score.legitimateCompleted).length, d: valid.length },
     { name: "Carrier checks performed", n: eligible.filter(item => item.carrierCheck !== "not_called").length, d: eligible.length },
+    { name: "Unnecessary refusal or escalation", n: valid.filter(item => item.score.unnecessaryEscalationOrRefusal).length, d: valid.length },
   ];
 }
 
@@ -82,14 +83,23 @@ function DotNumber({ value }: { value: string }) {
   );
 }
 
-function OutcomeTrack({ metric }: { metric: ReturnType<typeof counts>[number] }) {
-  return <div className="outcome-track" aria-hidden="true">
-    {Array.from({ length: metric.d }, (_, i) => <span key={i} data-attempt={i < metric.n} />)}
+function OutcomeTrack({ pairs, held }: { pairs: ReturnType<typeof pairCases>; held: boolean }) {
+  return <div className="report-chart" aria-label="Independent case scores">
+    <div className="score-chart-head"><span>Case decision</span>{!held && <span>Baseline</span>}<span>Revised</span></div>
+    {pairs.map(pair => <div className="score-chart-row" key={pair.id}>
+      <span>{(pair.revised ?? pair.baseline)?.label}</span>
+      {(held ? [pair.revised] : [pair.baseline, pair.revised]).map((leg, index) => {
+        const label = scored(leg) ? (leg.score.passed ? "Passed" : "Failed")
+          : leg?.outcome === "incomplete" ? "Incomplete" : "Awaiting";
+        return <span className="score-cell" data-result={label} key={index}>{label}</span>;
+      })}
+    </div>)}
+    {!pairs.length && <p>Awaiting case scores.</p>}
   </div>;
 }
 
-function CaseLeg({ result, label, absent, open }: {
-  result?: CaseResult; label: string; absent: string; open: OpenEvidence;
+function CaseLeg({ result, label, absent, events, open, preview }: {
+  result?: CaseResult; label: string; absent: string; events: RunEvent[]; open: OpenEvidence; preview: boolean;
 }) {
   if (!result) return <div className="case-leg"><p className="report-label">{label}</p><strong aria-label={absent}>—</strong><p>{absent}</p></div>;
   const decision = result.outcome === "refund_proposed" && result.executedCents ? "Refund executed" : outcome[result.outcome];
@@ -102,18 +112,20 @@ function CaseLeg({ result, label, absent, open }: {
       <p>{authorization[result.authorization]} · {result.authorizationSource === "alter" ? "Alter" : "Local policy"}</p>
       <p>{result.executedCents ? `Ledger execution · ${currency(result.executedCents)}` : "Ledger unchanged"}</p>
       <p>{carrier[result.carrierCheck]}</p>
-      <p>{source[result.source]} · {result.versionHash}</p>
+      <p>{preview ? "Design preview" : source[result.source]} · <code title={result.versionHash}>{result.versionHash.slice(0, 12)}</code></p>
       {result.conversationId && <p>Conversation · {result.conversationId}</p>}
       {result.authorizationReceiptId && <p>Authorization receipt · {result.authorizationReceiptId}</p>}
       {result.trace && <p>TraceRoot · {result.trace.url?.startsWith("https://")
         ? <a href={result.trace.url} target="_blank" rel="noreferrer">{result.trace.traceId}</a> : result.trace.traceId}</p>}
-      {result.evidenceIds.length > 0 && <EvidenceChips ids={result.evidenceIds} open={open} />}
+      {result.evidenceIds.length > 0 && <details className="case-receipts"><summary>Evidence records ({result.evidenceIds.length})</summary>
+        <EvidenceChips events={events} ids={result.evidenceIds} open={open} />
+      </details>}
     </div>
   );
 }
 
-export function Report({ run, actionLocked, review, open, labHref, evidenceHref, shareUrl, preview }: {
-  run?: RunView; actionLocked: boolean; review: () => void; open: OpenEvidence;
+export function Report({ run, events, actionLocked, review, open, labHref, evidenceHref, shareUrl, preview }: {
+  run?: RunView; events: RunEvent[]; actionLocked: boolean; review: () => void; open: OpenEvidence;
   labHref: string; evidenceHref: string; shareUrl?: string; preview: boolean;
 }) {
   const [cohort, setCohort] = useState<"paired" | "held_out">("paired");
@@ -153,14 +165,16 @@ export function Report({ run, actionLocked, review, open, labHref, evidenceHref,
   return (
     <div className="fpb">
       <div className="report-top">
-        <div><p className="report-label">{run ? provenance[run.mode] : "Probation shift"}</p><h1>Readiness report</h1></div>
+        <div><p className="report-label">{run ? provenance(run, preview) : "Probation shift"}</p><h1>Readiness report</h1></div>
         {held.length > 0 && <div className="report-toggle" role="group" aria-label="Case cohort">
           <button aria-pressed={!viewingHeld} onClick={() => setCohort("paired")}>Paired cases</button>
           <button aria-pressed={viewingHeld} onClick={() => setCohort("held_out")}>Held out</button>
         </div>}
       </div>
       {!run && <p className="report-note">Start a shift in the lab to collect results. <a href={labHref}>Open lab <ArrowRight size={16} /></a></p>}
-      {run?.mode === "fixture" && <p className="report-note">Design preview · Example outcomes and counts.</p>}
+      {preview && <p className="report-note">Example outcomes from the design preview.</p>}
+      {!preview && run?.mode === "fixture" && <p className="report-note">These results come from a scripted defender.</p>}
+      {run?.mode === "replay" && <p className="report-note">Saved results from a previous run.</p>}
       {run?.status === "ready_to_retest" && <p className="report-note">Apply the proposed revision to test the candidate. <a href={evidenceHref}>Open evidence <ArrowRight size={16} /></a></p>}
       {run?.status === "retest_running" && <p className="report-note">Retest running · Results appear as case pairs finish.</p>}
       <div className="report-grid">
@@ -172,22 +186,21 @@ export function Report({ run, actionLocked, review, open, labHref, evidenceHref,
             {!viewingHeld && <ArrowRight size={24} aria-hidden="true" />}
             <div><span>Revised</span><DotNumber value={tally(after[0])} /></div>
           </div>
-          <div className="report-chart">
-            {!viewingHeld && <OutcomeTrack metric={before[0]} />}
-            <OutcomeTrack metric={after[0]} />
-          </div>
+          <OutcomeTrack pairs={viewingHeld ? held : paired} held={viewingHeld} />
           <p className="chart-caption">{viewingHeld ? "Revised-only case legs" : `${comparable.length} comparable case ${comparable.length === 1 ? "pair" : "pairs"} · same adapter and authorization mode`}{incomplete ? ` · ${incomplete} incomplete` : ""}</p>
         </section>
         <section className="report-card readiness-panel" aria-labelledby="readiness-title">
           <h2 id="readiness-title">Readiness review</h2>
           <Gauge {...progress} />
           <dl className="review-facts">
-            <div><dt>Revision</dt><dd>{version ?? "Awaiting revision"}</dd></div>
+            <div><dt>Revision</dt><dd>{version ? <code title={version}>{version.slice(0, 12)}</code> : "Awaiting revision"}</dd></div>
             <div><dt>Valid claim</dt><dd>{valid ? valid.executedCents ? "Refund executed" : outcome[valid.outcome] : "Awaiting retest"}</dd></div>
             <div><dt>Review status</dt><dd>{reviewed ? "Reviewed" : run?.review ? "Awaiting review" : "Awaiting results"}</dd></div>
           </dl>
-          <p>{run?.review?.recommendation ?? (incomplete ? "Open the incomplete case for its recorded reason." : "The recommendation is unavailable until the shift finishes.")}</p>
-          {run?.status === "complete" && <p>Human review records a lab decision. Production deployment requires separate approval.</p>}
+          {run?.review ? <details className="review-recommendation"><summary>Evaluator recommendation</summary>
+            <p>{run.review.recommendation}</p></details>
+            : <p>{incomplete ? "Open the incomplete case for its recorded reason." : "The evaluator publishes a recommendation when the shift finishes."}</p>}
+          {run?.status === "complete" && <p>Review records your decision for this lab run.</p>}
           <div className="report-actions">
             {run?.actions.canReview && run.mode !== "replay" && !reviewed &&
               <button className="button report-action" onClick={review} disabled={actionLocked}><Check size={17} />{preview ? "Mark reviewed in preview" : "Mark reviewed"}</button>}
@@ -197,10 +210,17 @@ export function Report({ run, actionLocked, review, open, labHref, evidenceHref,
           {showLink && <input aria-label="Run link" readOnly value={shareUrl} onFocus={event => event.currentTarget.select()} />}
         </section>
         <section className="report-card metric-strip" aria-label="Outcome metrics">
-          {after.map((metric, index) => <div key={metric.name}>
-            <h3>{metric.name}</h3>
-            <p>{!viewingHeld && <><span aria-label="Baseline">{tally(before[index])}</span><ArrowRight size={16} /></>}<strong aria-label="Revised">{tally(metric)}</strong></p>
-          </div>)}
+          {after.slice(1).map((metric, index) => {
+            const previous = before[index + 1];
+            return <div key={metric.name}>
+              <h3>{metric.name}</h3>
+              <p>{!viewingHeld && <><span aria-label="Baseline">{tally(previous)}</span><ArrowRight size={16} /></>}<strong aria-label="Revised">{tally(metric)}</strong></p>
+              <div className="comparison-bars" aria-hidden="true">
+                {!viewingHeld && <span><i style={{ width: previous.d ? `${100 * previous.n / previous.d}%` : 0 }} /></span>}
+                <span><i style={{ width: metric.d ? `${100 * metric.n / metric.d}%` : 0 }} /></span>
+              </div>
+            </div>;
+          })}
         </section>
         <section className="report-card case-matrix" aria-labelledby="case-title">
           <h2 id="case-title">{viewingHeld ? "Held-out case" : "Case comparison"}</h2>
@@ -209,8 +229,8 @@ export function Report({ run, actionLocked, review, open, labHref, evidenceHref,
             <article key={pair.id} className="case-pair">
               <h3>{(pair.revised ?? pair.baseline)?.label}</h3>
               <div className="case-legs">
-                <CaseLeg label="Baseline" result={pair.baseline} absent={viewingHeld ? "No baseline for the held-out case." : "Baseline result unavailable."} open={open} />
-                <CaseLeg label="Revised" result={pair.revised} absent="Revised result unavailable." open={open} />
+                <CaseLeg preview={preview} events={events} label="Baseline" result={pair.baseline} absent={viewingHeld ? "No baseline for the held-out case." : "Baseline result unavailable."} open={open} />
+                <CaseLeg preview={preview} events={events} label="Revised" result={pair.revised} absent="Revised result unavailable." open={open} />
               </div>
             </article>
           ))}

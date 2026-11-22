@@ -17,11 +17,15 @@ export function Stage({ events, stage, active }: {
   const version = [...events].reverse().find(event => event.caseId === scene && event.version)?.version;
   const current = scene ? events.filter(event =>
     event.caseId === scene && (!event.version || !version || event.version === version)) : [];
-  const order = current.find(event => event.type === "tool_returned" && event.tool === "lookup_order");
-  const verification = current.find(event => event.type === "tool_returned" && event.tool === "verify_carrier_report");
+  const order = current.find(event => event.type === "tool_returned" && event.tool === "lookup_order" && event.sourceTrust === "authoritative");
+  const verification = current.find(event => event.type === "tool_returned" && event.tool === "verify_carrier_report" && event.sourceTrust === "authoritative");
   const attempt = current.find(event => event.type === "refund_attempted");
   const ledger = current.filter(event => event.type === "ledger_written");
-  const amount = ledger.at(-1)?.evidence?.find(field => field.label.toLowerCase().includes("amount"))?.value;
+  const executed = ledger.at(-1)?.evidence?.find(field => field.label === "Executed cents");
+  const amount = executed && /^\d+$/.test(executed.value) ? currency(Number(executed.value)) : undefined;
+  const check = verification?.evidence?.find(field => field.label === "Carrier check")?.value;
+  const carrierResult = check === "matched" ? "Damage confirmed" : check === "conflicting" ? "Records conflict"
+    : check === "unavailable" ? "Record unavailable" : verification ? "Record returned" : "Verification";
   const speaking = last?.type === "message" ? last.actor : last?.type === "finding_published" ? "thirteen" : "";
   const pulse = last?.id === attempt?.id && !!attempt;
 
@@ -53,7 +57,7 @@ export function Stage({ events, stage, active }: {
       </div>
       <div className="station-grid" aria-label="Business tools">
         <div data-lit={!!order}><PackageCheck size={19} /><span><strong>Order desk</strong><small>{order ? "Record returned" : "Order lookup"}</small></span></div>
-        <div data-lit={!!verification}><Truck size={19} /><span><strong>Carrier</strong><small>{verification ? "Record returned" : "Verification"}</small></span></div>
+        <div data-lit={!!verification}><Truck size={19} /><span><strong>Carrier</strong><small>{carrierResult}</small></span></div>
         <div data-lit={!!ledger.length}>{ledger.length ? <FileCheck2 size={19} /> : <ReceiptText size={19} />}<span><strong>Fake ledger</strong><small>{ledger.length ? amount ?? "Ledger written" : attempt ? "Ledger unchanged" : currency(0)}</small></span></div>
       </div>
     </section>

@@ -34,9 +34,9 @@ export function Lab({
   const flag = run?.cases.find(item => item.caseId === "monitor-conflict" &&
     item.version === (focusStage === "retest" ? "revised" : "baseline"));
   const showCaseResult = run?.mode !== "replay" || playback.shown === events.length;
-  const requestLabel = attempt?.label ?? (showCaseResult && flag?.requestedCents
-    ? `Refund requested · ${currency(flag.requestedCents)}` : undefined);
-  const authLabel = auth?.label ?? (showCaseResult && flag ? authorization[flag.authorization] : "Awaiting authorization");
+  const requestLabel = showCaseResult && flag?.requestedCents
+    ? `Refund requested · ${currency(flag.requestedCents)}` : attempt?.label;
+  const authLabel = showCaseResult && flag ? authorization[flag.authorization] : auth?.summary ?? "Awaiting authorization";
   const ledgerLabel = write?.label ?? (showCaseResult && flag?.executedCents
     ? `Ledger execution · ${currency(flag.executedCents)}` : "Ledger unchanged");
 
@@ -59,7 +59,7 @@ export function Lab({
           <span className="proof-kicker"><Activity size={17} /> {run ? "Shift activity" : "Shift brief"}</span>
           <div className="proof-title">
             <h2 id="brief-title">{run?.candidate.name ?? candidateName}</h2>
-            <p>{run ? provenance[run.mode] : preview ? "Design preview available" : "Synthetic orders and fake money"}</p>
+            <p>{run ? provenance(run, preview) : preview ? "Design preview available" : "Synthetic orders and fake money"}</p>
           </div>
           {!run && <p className="brief-copy">The defender handles the claim. 13 checks the tool history and proposes a workflow revision for you to test.</p>}
           {run && latest && <ol className="event-list latest"><EventRow event={latest} open={open} /></ol>}
@@ -86,7 +86,7 @@ export function Lab({
       <div className="lab-footer">
         <p><ShieldCheck size={16} /> Refund authorization and fake ledger execution are tracked separately.</p>
       </div>
-      <VoiceSlot run={run} />
+      <VoiceSlot run={run} preview={preview} />
     </>
   );
 }

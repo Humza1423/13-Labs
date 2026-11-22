@@ -169,7 +169,7 @@ function App() {
   const snapshot = inPreview ? previewState(route.previewStep, previewCount) : live;
   const run = snapshot?.run;
   const events = snapshot?.events ?? noEvents;
-  const preview = inPreview || (!route.runId && (route.explicitPreview || !!availability.unavailable));
+  const preview = inPreview || (!route.runId && route.explicitPreview);
   const lastPath = useRef(location.pathname + location.search);
 
   function navigate(href: string, replace = false) {
@@ -339,23 +339,23 @@ function App() {
 
   const headingStatus = run?.review?.status === "reviewed" ? "Reviewed"
     : run ? statusLabel[run.status] : route.runId ? "Opening shift" : "Ready to start";
-  const startLabel = pending ? "Starting shift…" : retryAt ? "Please wait…" : "Start probation shift";
+  const startLabel = preview ? "Start design preview" : pending ? "Starting shift…" : retryAt ? "Please wait…" : "Start probation shift";
   let view: ReactNode;
   if (route.view === "evidence") {
-    view = <Evidence key={route.runId ?? "new"} run={run} events={events} selected={route.eventId} open={openEvidence}
+    view = <Evidence key={route.runId ?? "new"} run={run} preview={inPreview} events={events} selected={route.eventId} open={openEvidence}
       retest={retest} actionLocked={blocked} recordedHref={recordedHref} labHref={viewHref("lab")} reportHref={viewHref("report")} />;
   } else if (route.view === "report") {
-    view = <Report key={route.runId ?? "new"} run={run} review={review} actionLocked={blocked} open={openEvidence}
+    view = <Report key={route.runId ?? "new"} run={run} events={events} review={review} actionLocked={blocked} open={openEvidence}
       labHref={viewHref("lab")} evidenceHref={viewHref("evidence")} preview={inPreview}
       shareUrl={run ? new URL(hrefFor("report", route.runId, inPreview ? route.previewStep : undefined), location.origin).href : undefined} />;
   } else {
     view = <Lab key={route.runId ?? "new"} run={run} events={events} start={start}
-      startLocked={blocked || !!route.runId || (!preview && (availability.checking || !!availability.error))} startLabel={startLabel}
+      startLocked={blocked || !!route.runId || (!preview && (availability.checking || !!availability.error || !!availability.unavailable))} startLabel={startLabel}
       candidateName={availability.data?.candidate.name ?? fixture.candidate.name} preview={preview}
       evidenceHref={viewHref("evidence")} reportHref={viewHref("report")} open={openEvidence} recordedHref={recordedHref} />;
   }
 
-  const error = mutationError ?? live?.error ?? (!route.runId ? availability.error : undefined);
+  const error = mutationError ?? live?.error ?? (!route.runId && !preview ? availability.error : undefined);
   const newHref = hrefFor("lab", undefined, undefined, route.explicitPreview || inPreview);
 
   return (
@@ -390,9 +390,14 @@ function App() {
               {recordedHref && <a className="text-action" href={recordedHref}>Open recorded run <ArrowUpRight size={16} /></a>}
             </div>}
             {route.runId && !run && !error && <p className="service-message" role="status">Loading shift…</p>}
+            {availability.unavailable && !route.runId && !preview && <div className="service-message" role="status">
+              <p>The shift API is unavailable.</p>
+              <button className="button secondary" onClick={() => refresh(value => value + 1)}>Retry connection</button>
+              <a className="text-action" href={hrefFor("lab", undefined, undefined, true)}>Open design preview <ArrowUpRight size={16} /></a>
+            </div>}
             {view}
             {run && <footer className="workspace-footer">
-              <span>{provenance[run.mode]}</span>
+              <span>{provenance(run, inPreview)}</span>
               <a href={newHref}>New shift <ArrowUpRight size={15} /></a>
             </footer>}
           </main>

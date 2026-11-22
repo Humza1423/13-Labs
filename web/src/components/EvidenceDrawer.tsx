@@ -4,14 +4,17 @@ import type { RunEvent } from "../contract";
 
 export type OpenEvidence = (id: string, trigger: HTMLElement) => void;
 
-export function EvidenceChips({ ids, open }: { ids: string[]; open: OpenEvidence }) {
+export function EvidenceChips({ ids, events, open }: { ids: string[]; events: RunEvent[]; open: OpenEvidence }) {
   return (
     <div className="evidence-chips">
-      {[...new Set(ids)].map(id => (
-        <button key={id} className="evidence-chip" onClick={event => open(id, event.currentTarget)}>
-          <span aria-hidden="true">↗</span> {id}
-        </button>
-      ))}
+      {[...new Set(ids)].map(id => {
+        const record = events.find(event => event.id === id);
+        return (
+          <button key={id} className="evidence-chip" onClick={event => open(id, event.currentTarget)}>
+            <span aria-hidden="true">↗</span> {record ? `#${record.seq} ${record.label}` : id}
+          </button>
+        );
+      })}
     </div>
   );
 }

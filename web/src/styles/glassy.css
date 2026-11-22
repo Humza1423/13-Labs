@@ -4,18 +4,18 @@
 body { margin: 0; background: #ede0d0; }
 .gd-app {
   --gd-ink: #25201e;
-  --gd-muted: #54463d;
-  --gd-line: rgb(74 49 33 / 16%);
-  --gd-rim: rgb(255 253 246 / 67%);
+  --gd-muted: #423731;
+  --gd-line: rgb(74 49 33 / 15%);
+  --gd-rim: rgb(255 253 246 / 51%);
   --gd-edge-light: rgb(255 254 247 / 84%);
   --gd-edge-shade: rgb(57 40 28 / 17%);
   --gd-gloss: rgb(255 251 242 / 45%);
-  --gd-frame: rgb(247 234 219 / 50%);
-  --gd-rail: rgb(241 222 206 / 58%);
-  --gd-card: rgb(250 242 232 / 68%);
+  --gd-frame: rgb(247 234 219 / 23%);
+  --gd-rail: rgb(241 222 206 / 48%);
+  --gd-card: rgb(250 242 232 / 46%);
   --gd-card-light: rgb(255 251 245 / 34%);
   --gd-raised: rgb(255 249 243 / 88%);
-  --gd-inner: rgb(255 250 245 / 42%);
+  --gd-inner: rgb(255 250 245 / 37%);
   --gd-surface: #f6ece2;
   --gd-primary: #261e1b;
   --gd-primary-ink: #fffaf5;
