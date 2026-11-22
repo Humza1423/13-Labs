@@ -42,6 +42,11 @@ def create_app(
     settings = settings or get_settings()
     if trace_sink is None:
         trace_sink = sink_from_settings(settings)
+    if authorization_gate is None and settings.alter_api_key and settings.alter_grant_id:
+        from .integrations.alter import AlterGate
+
+        authorization_gate = AlterGate(settings.alter_api_key, settings.alter_grant_id, settings.public_origin)
+        authorization_source = "alter"
     fixture_mode = settings.demo_mode == "fixture"
     if defender_driver is None and not fixture_mode:
         defender_driver = configured_driver(settings)
