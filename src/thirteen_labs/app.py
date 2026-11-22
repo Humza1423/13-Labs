@@ -17,8 +17,10 @@ from .config import Settings, get_settings
 from .contracts import Capabilities, HealthResponse
 from .engine.fixture import FixtureDriver
 from .engine.service import ShiftEngine
+from .integrations.elevenlabs import ElevenLabsDriver, configured_driver, voice_enabled
 from .ports import AuthorizationGate, DefenderDriver, TraceSink
 from .routes import register_routers
+from .routes.voice import VoiceSessions
 from .store import RunStore
 
 WEB_DIST = Path(__file__).resolve().parents[2] / "web" / "dist"
@@ -37,12 +39,21 @@ def create_app(
     authorization_source: Literal["local", "alter"] = "local",
 ) -> FastAPI:
     settings = settings or get_settings()
-    if defender_driver is None and settings.demo_mode != "fixture" and settings.anthropic_api_key:
-        from .integrations.anthropic import AnthropicDefenderDriver
-
-        defender_driver = AnthropicDefenderDriver(settings.anthropic_api_key, settings.lab_model)
     fixture_mode = settings.demo_mode == "fixture"
+    if defender_driver is None and not fixture_mode:
+        defender_driver = configured_driver(settings)
+        if defender_driver is None and settings.anthropic_api_key:
+            from .integrations.anthropic import AnthropicDefenderDriver
+
+            defender_driver = AnthropicDefenderDriver(settings.anthropic_api_key, settings.lab_model)
     driver = FixtureDriver() if fixture_mode else defender_driver
+    has_voice = voice_enabled(settings)
+    if isinstance(driver, ElevenLabsDriver):
+        provider_config = {"agentId": driver.agent_id}
+        source = "elevenlabs"
+    else:
+        provider_config = {} if fixture_mode else {"model": settings.lab_model}
+        source = "fixture" if fixture_mode else "model"
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -50,20 +61,23 @@ def create_app(
             RunStore(settings.state_db),
             driver=driver,
             mode="fixture" if fixture_mode else "live",
-            source="fixture" if fixture_mode else "model",
-            provider_config={} if fixture_mode else {
-                "model": settings.lab_model, "agentId": settings.elevenlabs_lab_agent_id,
-            },
+            source=source,
+            provider_config=provider_config,
             trace_sink=trace_sink,
             authorization=authorization_gate,
             authorization_source=authorization_source,
-            voice_available=settings.capabilities["voice"],
+            voice_available=has_voice,
             live_run_limit=settings.demo_run_limit,
         )
         app.state.shift_engine = engine
+        sessions = None
         try:
+            sessions = VoiceSessions(settings.state_db) if has_voice else None
+            app.state.voice_sessions = sessions
             yield
         finally:
+            if sessions is not None:
+                sessions.store.close()
             await engine.close()
 
     app = FastAPI(title="13 Labs", docs_url="/api/docs", openapi_url="/api/openapi.json", lifespan=lifespan)
@@ -82,7 +96,7 @@ def create_app(
         return HealthResponse(
             status="ok",
             commit=settings.commit_sha,
-            capabilities=Capabilities(**{**settings.capabilities, "batch": driver is not None}),
+            capabilities=Capabilities(**{**settings.capabilities, "batch": driver is not None, "voice": has_voice}),
         ).dump()
 
     register_routers(app)
