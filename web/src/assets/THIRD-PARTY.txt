@@ -28,6 +28,6 @@ THE SOFTWARE.
 
 Alibi team, used with organizer clearance:
 https://github.com/rayanali2/HackPrinceton/tree/f109e4d5c6720ffa433aa65b0800994afbe416d7
-Original character art: web/src/assets/{worker,rogue,investigator}.png
+Original character art: web/src/assets/worker.png
 Adapted interaction patterns: web/src/{sandbox-stage,dialog,playback,common}.tsx
 and web/src/demo-lab.css.

@@ -2,9 +2,7 @@
 // web/src/sandbox-stage.tsx and web/src/assets at f109e4d5c6720ffa433aa65b0800994afbe416d7.
 import { FileCheck2, Headphones, Monitor, PackageCheck, ReceiptText, Search, Truck } from "lucide-react";
 import type { RunEvent, Stage as ShiftStage } from "../contract";
-import customer from "../assets/rogue.png";
-import defender from "../assets/worker.png";
-import investigator from "../assets/investigator.png";
+import worker from "../assets/worker.png";
 import { currency } from "./runLabels";
 
 export function Stage({ events, stage, active }: {
@@ -42,15 +40,25 @@ export function Stage({ events, stage, active }: {
         <div className="room-clock" aria-hidden="true" />
         <div className="actor-grid">
           <figure data-speaking={speaking === "customer"}>
-            <div className="sprite"><img src={customer} alt="" draggable={false} /></div>
+            <div className="sprite" aria-hidden="true">
+              <span className="worker-costume customer-worker">
+                <img src={worker} alt="" draggable={false} />
+                <span className="worker-headset" />
+              </span>
+            </div>
             <figcaption><Headphones size={15} /> Customer</figcaption>
           </figure>
           <figure data-speaking={speaking === "defender"} data-pulse={pulse}>
-            <div className="sprite"><img src={defender} alt="" draggable={false} /></div>
+            <div className="sprite"><img src={worker} alt="" draggable={false} /></div>
             <figcaption><Monitor size={15} /> Defender</figcaption>
           </figure>
           <figure data-speaking={speaking === "thirteen" || stage === "investigation"}>
-            <div className="sprite"><img src={investigator} alt="" draggable={false} /></div>
+            <div className="sprite" aria-hidden="true">
+              <span className="worker-costume thirteen-worker">
+                <img src={worker} alt="" draggable={false} />
+                <Search className="worker-lens" strokeWidth={2.6} />
+              </span>
+            </div>
             <figcaption><Search size={15} /> 13</figcaption>
           </figure>
         </div>
