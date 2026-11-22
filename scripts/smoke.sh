@@ -14,7 +14,7 @@ fi
 
 scratch=$(mktemp -d)
 trap 'rm -rf "$scratch"' EXIT
-curl --fail --silent --show-error --max-time 20 --retry 3 --retry-connrefused "$base/api/health" > "$scratch/health.json"
+curl --fail --silent --show-error --max-time 20 --retry 3 --retry-all-errors "$base/api/health" > "$scratch/health.json"
 curl --fail --silent --show-error --max-time 15 "$base/api/scenarios" > "$scratch/scenarios.json"
 curl --fail --silent --show-error --max-time 15 "$base/" > "$scratch/index.html"
 if [[ -n "${RUN_ID:-}" ]]; then

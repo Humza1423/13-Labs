@@ -6,6 +6,7 @@ one include line below (E1: runs, V1: voice, P1: ledger).
 
 from __future__ import annotations
 
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal
@@ -76,6 +77,7 @@ def create_app(
 
     app = FastAPI(title="13 Labs", docs_url="/api/docs", openapi_url="/api/openapi.json", lifespan=lifespan)
     app.state.settings = settings
+    app.state.recorded_run_id = os.getenv("RECORDED_RUN_ID")
 
     @app.exception_handler(HTTPException)
     async def http_error(_: Request, exc: HTTPException) -> JSONResponse:

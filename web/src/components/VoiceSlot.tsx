@@ -1,9 +1,17 @@
 import { MicOff } from "lucide-react";
+import { lazy, Suspense } from "react";
 import type { RunView } from "../contract";
-import { VoiceCall } from "../voice/VoiceCall";
+
+const VoiceCall = lazy(() => import("../voice/VoiceCall").then(({ VoiceCall }) => ({ default: VoiceCall })));
 
 export function VoiceSlot({ run }: { run?: RunView }) {
-  if (run?.mode === "live" && run.actions.canStartVoice) return <VoiceCall runId={run.id} />;
+  if (run?.mode === "live" && run.actions.canStartVoice) {
+    return (
+      <Suspense fallback={<p role="status">Loading microphone controls…</p>}>
+        <VoiceCall runId={run.id} />
+      </Suspense>
+    );
+  }
   return (
     <section className="gd-card voice-slot" aria-labelledby="voice-title">
       <div className="voice-icon"><MicOff size={21} /></div>
