@@ -4,7 +4,7 @@ Finance Bento by @romanvasnev / Vasnev.art
 https://21st.dev/@romanvasnev/components/finance-bento
 
 The 21st.dev catalog lists both components under the MIT License. This project
-adapts styles from their published preview bundles and uses typed React views.
+adapts their published styles and chart treatments in typed React views.
 
 MIT License
 
