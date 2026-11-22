@@ -1,0 +1,14 @@
+.git
+**/.env
+**/.env.*
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/node_modules
+**/*.tsbuildinfo
+**/*.db
+**/*.db-*
+**/*.db.voice*
+web/dist
+data
+work
