@@ -3,7 +3,8 @@ import { useState } from "react";
 import type { RunEvent, RunView } from "../contract";
 import { EventRow, EvidenceChips } from "../components/EvidenceDrawer";
 import type { OpenEvidence } from "../components/EvidenceDrawer";
-import { provenance } from "../components/runLabels";
+import { StageProgress } from "../components/StageProgress";
+import { phase, provenance } from "../components/runLabels";
 
 const filters = [
   { id: "all", label: "All events" },
@@ -17,11 +18,28 @@ export function Evidence({ run, preview, events, selected, open, retest, actionL
   actionLocked: boolean; recordedHref?: string; labHref: string; reportHref: string;
 }) {
   const [filter, setFilter] = useState<Filter>("all");
+  const finding = run?.finding;
+  const firstKeyEvent = events.find(event => finding?.eventIds.includes(event.id))
+    ?? events.find(event => event.type === "refund_attempted") ?? events.find(event => event.tool);
+  const [lastOpened, setLastOpened] = useState(selected);
+  const selectedEvent = events.find(event => event.id === (selected ?? lastOpened)) ?? firstKeyEvent;
+  const openRecord: OpenEvidence = (id, trigger) => {
+    setLastOpened(id);
+    open(id, trigger);
+  };
   const visible = events.filter(event => event.id === selected || filter === "all"
     || (filter === "transcript" && event.type === "message")
     || (filter === "tools" && !!event.tool));
-  const finding = run?.finding;
   const revision = run?.revision;
+  const retesting = run?.status === "retest_running";
+  const retestReason = !run ? "Start a shift to collect evidence."
+    : run.status === "failed" ? "The shift was interrupted."
+    : retesting ? "The retest is running."
+    : run.status === "investigating" ? "13 is reviewing the tool history."
+    : run.status !== "ready_to_retest" || !revision ? "Available when the baseline and revision are ready."
+    : run.mode === "replay" ? "Recorded runs are read-only."
+    : !run.actions.canRetest ? "Retest is available to the run owner."
+    : actionLocked ? "Waiting for the shift service." : undefined;
   return (
     <>
       <div className="view-heading">
@@ -30,25 +48,28 @@ export function Evidence({ run, preview, events, selected, open, retest, actionL
           <h1>Evidence</h1>
           <p className="view-description">Follow the conversation, tool activity, and authorization decisions.</p>
         </div>
+        <div className="step-action">
+          {run?.status === "complete" ? <a className="button primary" href={reportHref}>View report<ArrowRight size={18} /></a>
+            : <button className="button primary" onClick={retest} disabled={!!retestReason} aria-describedby={retestReason ? "retest-reason" : undefined}>
+              {retesting ? "View report" : "Apply in lab and retest"}<ArrowRight size={18} /></button>}
+          {run?.status !== "complete" && retestReason && <p className="action-reason" id="retest-reason" role="status">{retestReason}</p>}
+        </div>
       </div>
+      <StageProgress stage={run?.status === "failed" ? events.at(-1)?.stage : run ? phase[run.status] : undefined} />
       <section className="gd-card finding-panel" aria-labelledby="finding-title">
         <p className="proof-kicker"><FileSearch size={18} /> Investigator finding</p>
         <h2 id="finding-title">{finding?.summary ?? "The finding is unavailable"}</h2>
         <p>{finding?.observation ?? (!run ? "Start a shift in the lab to collect evidence."
           : run.status === "failed" ? "The shift ended before 13 published a finding."
           : "13 publishes a finding after reviewing the baseline tool history.")}</p>
-        {finding && <EvidenceChips events={events} ids={finding.eventIds} open={open} />}
+        {selectedEvent && <p className="key-event"><strong>Selected event · #{selectedEvent.seq}</strong> {selectedEvent.label} · {selectedEvent.summary}</p>}
+        {finding && <EvidenceChips events={events} ids={finding.eventIds} open={openRecord} />}
         {!run && <a className="button secondary" href={labHref}>Open lab<ArrowRight size={17} /></a>}
         {run?.status === "failed" && recordedHref && <a className="text-action" href={recordedHref}>Open recorded run <ArrowRight size={16} /></a>}
       </section>
       {revision && <section className="gd-card revision-panel" aria-labelledby="revision-title">
         <div className="section-heading">
           <div><p className="proof-kicker"><GitPullRequest size={17} /> Workflow revision</p><h2 id="revision-title">Instructions for the next shift</h2></div>
-          {run.status === "ready_to_retest" && (run.actions.canRetest && run.mode !== "replay"
-            ? <button className="button primary" onClick={retest} disabled={actionLocked}>Apply in lab and retest<ArrowRight size={18} /></button>
-            : <p>Retest is available to the run owner.</p>)}
-          {(run.status === "retest_running" || run.status === "complete") &&
-            <a className="button secondary" href={reportHref}>{run.status === "complete" ? "Open readiness report" : "Follow the retest"}<ArrowRight size={18} /></a>}
         </div>
         <div className="workflow-diff">
           <div><h3>Baseline</h3><p>{revision.before}</p></div>
@@ -56,7 +77,7 @@ export function Evidence({ run, preview, events, selected, open, retest, actionL
         </div>
         <div className="revision-meta">
           <p>{revision.source === "rule" ? "Rule-proposed" : "Model-proposed"} · {revision.fromVersionHash} → {revision.versionHash}</p>
-          <EvidenceChips events={events} ids={revision.eventIds} open={open} />
+          <EvidenceChips events={events} ids={revision.eventIds} open={openRecord} />
         </div>
       </section>}
       <section className="gd-card timeline-panel" aria-labelledby="timeline-title">
@@ -67,7 +88,7 @@ export function Evidence({ run, preview, events, selected, open, retest, actionL
           </div>
         </div>
         {visible.length > 0 ? <ol className="event-list">{visible.map(event =>
-          <EventRow key={event.id} event={event} selected={event.id === selected} open={open} />)}</ol>
+          <EventRow key={event.id} event={event} selected={event.id === selectedEvent?.id} open={openRecord} />)}</ol>
           : <p className="empty-state" role="status">{events.length ? "No events match this filter." : "No evidence has arrived yet."}</p>}
       </section>
     </>

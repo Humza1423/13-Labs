@@ -77,7 +77,7 @@ test("a stale retest refreshes the run and shows the server's conflict message",
   render(<App />);
   fireEvent.click(await screen.findByRole("button", {name:"Apply in lab and retest"}));
   expect((await screen.findByRole("alert")).textContent).toMatch(/The revision has changed/);
-  expect(await screen.findByRole("link", {name:"Open readiness report"})).toBeTruthy();
+  expect(await screen.findByRole("link", {name:"View report"})).toBeTruthy();
   expect(retest).toHaveBeenCalledOnce();
   expect(load.mock.calls.length).toBeGreaterThan(1);
 });
@@ -95,7 +95,58 @@ test("a rate-limited start honors the retry delay and reuses its key", async () 
   const wait = await screen.findByRole("button", {name:"Please wait…"});
   expect((wait as HTMLButtonElement).disabled).toBe(true);
   fireEvent.click(await screen.findByRole("button", {name:"Start probation shift"}));
-  await screen.findByRole("link", {name:"Open readiness report"});
+  await screen.findByRole("link", {name:"View report"});
   expect(start).toHaveBeenCalledTimes(2);
   expect(start.mock.calls[1][0]).toBe(start.mock.calls[0][0]);
+});
+
+test("the recording flow waits for each phase and keeps the next action visible", async () => {
+  const baseline: RunView = {
+    ...serverRun, status: "baseline_running", finding: undefined, revision: undefined, review: undefined,
+    actions: { canRetest: false, canReview: false, canStartVoice: false },
+  };
+  let current = baseline;
+  vi.spyOn(api, "start").mockResolvedValue(baseline);
+  vi.spyOn(api, "run").mockImplementation(async () => current);
+  vi.spyOn(api, "events").mockResolvedValue({events, nextAfter: events.length});
+  vi.spyOn(api, "retest").mockImplementation(async () => {
+    current = { ...serverRun, status: "retest_running" };
+    return current;
+  });
+  vi.spyOn(api, "review").mockImplementation(async () => {
+    current = { ...serverRun, review: { ...serverRun.review!, status: "reviewed" } };
+    return current;
+  });
+  render(<App />);
+  const start = screen.getByRole<HTMLButtonElement>("button", { name: "Start probation shift" });
+  await waitFor(() => expect(start.disabled).toBe(false));
+  fireEvent.click(start);
+  const inspect = await screen.findByRole<HTMLButtonElement>("button", { name: "Inspect the evidence" });
+  expect(inspect.disabled).toBe(true);
+  expect(screen.getByText(/Available when the baseline finishes/)).toBeTruthy();
+  const validClaim = screen.getByRole("region", { name: "Valid claim" });
+  expect(within(validClaim).getByRole("heading", { name: "Talk to the defender" })).toBeTruthy();
+  expect(screen.getByRole("listitem", { current: "step" }).textContent).toContain("Baseline");
+
+  current = { ...baseline, status: "investigating" };
+  fireEvent.click(await screen.findByRole("link", { name: "Inspect the evidence" }, { timeout: 2500 }));
+  expect(screen.getByRole<HTMLButtonElement>("button", { name: "Apply in lab and retest", description: "13 is reviewing the tool history." }).disabled).toBe(true);
+  current = { ...serverRun, status: "ready_to_retest", actions: { ...serverRun.actions, canRetest: true } };
+  const apply = screen.getByRole<HTMLButtonElement>("button", { name: "Apply in lab and retest" });
+  await waitFor(() => expect(apply.disabled).toBe(false), { timeout: 2500 });
+  const firstKey = events.find(event => serverRun.finding!.eventIds.includes(event.id))!;
+  expect(document.getElementById(`event-${firstKey.id}`)?.querySelector("button")?.getAttribute("aria-current")).toBe("true");
+  fireEvent.click(apply);
+
+  const view = await screen.findByRole<HTMLButtonElement>("button", { name: "View report" });
+  expect(view.disabled).toBe(true);
+  expect(location.search).toContain("view=evidence");
+  expect(screen.getByRole("listitem", { current: "step" }).textContent).toContain("Retest");
+  current = serverRun;
+  fireEvent.click(await screen.findByRole("link", { name: "View report" }, { timeout: 2500 }));
+  expect(screen.getByRole("heading", { name: "Readiness report" })).toBeTruthy();
+  expect(screen.getByRole("listitem", { current: "step" }).textContent).toContain("Review");
+  fireEvent.click(screen.getByRole("button", { name: "Mark reviewed" }));
+  expect(await screen.findByText("This run has been reviewed.")).toBeTruthy();
+  expect(screen.getByRole<HTMLButtonElement>("button", { name: "Mark reviewed" }).disabled).toBe(true);
 });

@@ -17,13 +17,13 @@ export function VoiceSlot({ run, preview }: { run?: RunView; preview: boolean })
       <div className="voice-icon"><MicOff size={21} /></div>
       <div>
         <h2 id="voice-title">Talk to the defender</h2>
-        <p>{run?.mode === "replay" ? "Recorded run · voice unavailable."
+        <p id="voice-reason">{run?.mode === "replay" ? "Recorded run · voice unavailable."
           : preview ? "Design preview · voice unavailable."
           : run?.mode === "fixture" ? "Scripted fixture · voice unavailable."
           : !run ? "Voice unavailable until a live shift starts."
           : "Voice unavailable for this run."}</p>
       </div>
-      <button className="button secondary" disabled>Talk to the defender</button>
+      <button className="button secondary" disabled aria-describedby="voice-reason">Talk to the defender</button>
     </section>
   );
 }

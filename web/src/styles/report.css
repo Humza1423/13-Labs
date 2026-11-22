@@ -145,3 +145,9 @@
   .metric-strip { grid-template-columns: minmax(0, 1fr); }
   .metric-tile { min-height: 120px; }
 }
+
+.fpb .report-action.primary { color: #101112; background: var(--acc); }
+.fpb .stage-track { background: #202025; border-color: #414149; }
+.fpb .stage-track li { color: #d0d0de; }
+.fpb .stage-track li[aria-current] { background: #373b50; color: white; }
+.fpb .stage-track .step-index { color: inherit; background: #242429; border-color: currentColor; }

@@ -357,3 +357,13 @@ body { margin: 0; background: #ede0d0; }
   .gd-app [aria-current], .gd-app [aria-pressed="true"] { border: 2px solid Highlight; }
   .status-dot, .step-index { border: 1px solid ButtonText; }
 }
+
+.gd-stage .action-reason { font-size: 14px; color: var(--gd-muted); margin: 4px 0 0; }
+.step-action { display: grid; gap: 4px; }
+.voice-case { margin-top: 14px; }
+.voice-case > p { margin-bottom: 5px; }
+.gd-stage[data-view="evidence"] .stage-track, .fpb .stage-track { margin: 0 0 14px; }
+.key-event { border-inline-start: 3px solid var(--gd-teal); padding-inline-start: 9px; }
+@media (forced-colors: active) {
+  .stage-track li[aria-current] { outline: 2px solid Highlight; }
+}

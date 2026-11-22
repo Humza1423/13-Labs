@@ -291,7 +291,7 @@ function App() {
     if (!run?.actions.canRetest || !run.revision) return;
     if (inPreview) {
       setPreviewCount(1);
-      navigate(hrefFor("report", fixture.id, "retest"));
+      navigate(hrefFor("evidence", fixture.id, "retest"));
       return;
     }
     const revision = run.revision.id;
@@ -299,7 +299,7 @@ function App() {
       retestKey.current = { run: run.id, revision, key: crypto.randomUUID() };
     }
     const { key } = retestKey.current;
-    void mutate(() => api.retest(run.id, revision, key), "report", "retest");
+    void mutate(() => api.retest(run.id, revision, key), "evidence", "retest");
   }
 
   function review() {
@@ -352,6 +352,8 @@ function App() {
   } else {
     view = <Lab key={route.runId ?? "new"} run={run} events={events} start={start}
       startLocked={blocked || !!route.runId || (!preview && (availability.checking || !!availability.error || !!availability.unavailable))} startLabel={startLabel}
+      startReason={pending ? "Starting the shift." : retryAt ? "Waiting to retry." : route.runId ? "Opening the existing shift."
+        : !preview && availability.checking ? "Checking shift availability." : !preview && (availability.error || availability.unavailable) ? "The shift service is unavailable." : undefined}
       candidateName={availability.data?.candidate.name ?? fixture.candidate.name} preview={preview}
       evidenceHref={viewHref("evidence")} reportHref={viewHref("report")} open={openEvidence} recordedHref={recordedHref} />;
   }
