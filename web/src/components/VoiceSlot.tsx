@@ -1,8 +1,17 @@
 import { MicOff } from "lucide-react";
+import { lazy, Suspense } from "react";
 import type { RunView } from "../contract";
 
-/** Friend 2's voice widget mounts here with the current run and its scoped actions. */
+const VoiceCall = lazy(() => import("../voice/VoiceCall").then(({ VoiceCall }) => ({ default: VoiceCall })));
+
 export function VoiceSlot({ run, preview }: { run?: RunView; preview: boolean }) {
+  if (!preview && run?.mode === "live" && run.actions.canStartVoice) {
+    return (
+      <Suspense fallback={<p role="status">Loading microphone controls…</p>}>
+        <VoiceCall runId={run.id} />
+      </Suspense>
+    );
+  }
   return (
     <section className="gd-card voice-slot" aria-labelledby="voice-title">
       <div className="voice-icon"><MicOff size={21} /></div>
@@ -12,8 +21,7 @@ export function VoiceSlot({ run, preview }: { run?: RunView; preview: boolean })
           : preview ? "Design preview · voice unavailable."
           : run?.mode === "fixture" ? "Scripted fixture · voice unavailable."
           : !run ? "Voice unavailable until a live shift starts."
-          : !run.actions.canStartVoice ? "Voice unavailable for this run."
-          : "Voice unavailable in this build."}</p>
+          : "Voice unavailable for this run."}</p>
       </div>
       <button className="button secondary" disabled>Talk to the defender</button>
     </section>
