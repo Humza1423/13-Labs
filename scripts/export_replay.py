@@ -5,8 +5,9 @@ import argparse
 import json
 from pathlib import Path
 from urllib.parse import quote
-from urllib.request import urlopen
 from uuid import NAMESPACE_URL, uuid4, uuid5
+
+import httpx
 
 from thirteen_labs.contracts import EventsPage, PreviewFixture, RunView
 from thirteen_labs.store import RunStore, encode
@@ -15,8 +16,9 @@ READ_ONLY = {"canRetest": False, "canReview": False, "canStartVoice": False}
 
 
 def fetch(url):
-    with urlopen(url, timeout=15) as response:
-        return json.load(response)
+    response = httpx.get(url, timeout=15)
+    response.raise_for_status()
+    return response.json()
 
 
 def validate(document):
