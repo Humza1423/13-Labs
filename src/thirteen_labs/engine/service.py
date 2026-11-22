@@ -7,7 +7,7 @@ from dataclasses import asdict
 
 from thirteen_labs.engine.evaluation import BASELINE_WORKFLOW, investigate, recommendation, score, workflow_hash
 from thirteen_labs.engine.tools import TOOL_SCHEMAS, CaseDispatcher, public_id
-from thirteen_labs.contracts import RunEvent
+from thirteen_labs.contracts import RunEvent, TraceRef
 from thirteen_labs.ports import AuthorizationGate, DefenderDriver, DriverSpec, TraceSink
 from thirteen_labs.scenarios import CANDIDATE, SCENARIOS, Scenario, customer_turns
 from thirteen_labs.store import RunStore, encode
@@ -213,6 +213,15 @@ class ShiftEngine:
             "source": source, "versionHash": version_hash,
             "evidenceIds": [event["id"] for event in events],
         }
+        # Correlate with the trace opened for the first event, then persist the
+        # reference in the same transaction as the case result and score event.
+        if lookup_trace := getattr(self.trace_sink, "trace_ref", None):
+            try:
+                ref = lookup_trace(run_id, scenario.id, version)
+                if ref is not None:
+                    record["trace"] = TraceRef.model_validate(ref).dump()
+            except Exception:
+                logger.debug("Trace reference unavailable for case %s", case_run_id)
         if conversation_id:
             record["conversationId"] = conversation_id
         if dispatcher.authorization_receipt_id:

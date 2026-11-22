@@ -101,7 +101,10 @@ def create_app(
         return HealthResponse(
             status="ok",
             commit=settings.commit_sha,
-            capabilities=Capabilities(**{**settings.capabilities, "batch": driver is not None, "voice": has_voice}),
+            capabilities=Capabilities(**{
+                **settings.capabilities, "batch": driver is not None, "voice": has_voice,
+                "traces": bool(getattr(trace_sink, "enabled", False)),
+            }),
         ).dump()
 
     register_routers(app)

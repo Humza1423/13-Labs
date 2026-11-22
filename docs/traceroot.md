@@ -10,6 +10,7 @@ export is unavailable.
 | Name | Value |
 | --- | --- |
 | `TRACEROOT_API_KEY` | Project API key from traceroot Cloud or a self-hosted deployment. |
+| `TRACEROOT_DASHBOARD_URL` | Optional public HTTP(S) dashboard link template containing `{trace_id}`. Use the canonical URL returned by the project's TraceRoot read API and substitute the trace ID. |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | Full OTLP traces URL. Default `https://app.traceroot.ai/api/v1/public/traces`. Self-hosted: `http://<host>:8000/api/v1/public/traces`. Any OTLP/HTTP protobuf receiver works, e.g. `http://localhost:4318/v1/traces` (key may then be empty). |
 
 The sink sends `Authorization: Bearer <TRACEROOT_API_KEY>` and OTLP protobuf to
@@ -26,22 +27,10 @@ One trace per `(run.id, case.id, defender.version)` case leg. Children:
 timestamps are used, so the trace replays the recorded sequence. Run-level
 events with no case (phase changes, finding, revision) stay local-only.
 
-`sink.trace_ref(run_id, case_id, version)` returns
-`{"provider": "traceroot", "traceId": <32-hex>, "url"?}` for E1 to store in
-`CaseResult.trace`. `url` appears only when a `dashboard_url` template
-containing `{trace_id}` is supplied — TraceRoot does not publish a fixed
-per-trace URL format.
-
-## Wiring (Firstmate lands in app.py)
-
-```python
-from .integrations.traceroot import sink_from_settings
-
-trace_sink=trace_sink or sink_from_settings(settings),   # inside create_app
-```
-
-and in the lifespan shutdown, after `await engine.close()`:
-`trace_sink.close()` — ends interrupted legs and flushes the exporter.
+The engine persists each case's OpenTelemetry trace ID as `CaseResult.trace` and
+includes the dashboard link when configured. Trace IDs correlate locally
+recorded events with spans. Export is asynchronous and can fail. Confirm
+delivery with the provider read API or UI before reporting a verified trace.
 
 ## Verification
 
