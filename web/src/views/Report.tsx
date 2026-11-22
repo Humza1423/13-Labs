@@ -3,7 +3,8 @@ import { useState } from "react";
 import type { CaseResult, RunEvent, RunView } from "../contract";
 import { EvidenceChips } from "../components/EvidenceDrawer";
 import type { OpenEvidence } from "../components/EvidenceDrawer";
-import { authorization, carrier, currency, outcome, provenance } from "../components/runLabels";
+import { StageProgress } from "../components/StageProgress";
+import { phase, authorization, carrier, currency, outcome, provenance } from "../components/runLabels";
 
 const caseOrder = ["monitor-conflict", "monitor-valid", "monitor-incomplete", "monitor-heldout"];
 const source = { fixture: "Scripted fixture", model: "Model", elevenlabs: "ElevenLabs" };
@@ -148,6 +149,12 @@ export function Report({ run, events, actionLocked, review, open, labHref, evide
   const after = counts((viewingHeld ? held : comparable).flatMap(pair => pair.revised ?? []));
   const progress = run?.progress ?? { completed: 0, total: 0 };
   const reviewed = run?.review?.status === "reviewed";
+  const reviewReason = reviewed ? "This run has been reviewed."
+    : run?.mode === "replay" ? "Recorded runs are read-only."
+    : run?.status === "failed" ? "The shift was interrupted."
+    : run?.status !== "complete" ? "Available when the retest finishes."
+    : !run.actions.canReview ? "Review is available to the run owner."
+    : actionLocked ? "Waiting for the shift service." : undefined;
   const incomplete = cases.filter(item => item.outcome === "incomplete").length;
   const version = run?.revision?.versionHash ?? cases.find(item => item.version === "revised")?.versionHash;
   const valid = cases.find(item => item.caseId === "monitor-valid" && item.version === "revised");
@@ -172,6 +179,7 @@ export function Report({ run, events, actionLocked, review, open, labHref, evide
           <button aria-pressed={viewingHeld} onClick={() => setCohort("held_out")}>Held out</button>
         </div>}
       </div>
+      <StageProgress stage={run?.status === "failed" ? events.at(-1)?.stage : run ? phase[run.status] : undefined} />
       {!run && <p className="report-note">Start a shift in the lab to collect results. <a href={labHref}>Open lab <ArrowRight size={16} /></a></p>}
       {preview && <p className="report-note">Example outcomes from the design preview.</p>}
       {!preview && run?.mode === "fixture" && <p className="report-note">These results come from a scripted defender.</p>}
@@ -195,7 +203,7 @@ export function Report({ run, events, actionLocked, review, open, labHref, evide
           <Gauge {...progress} />
           <dl className="review-facts">
             <div><dt>Revision</dt><dd>{version ? <code title={version}>{version.slice(0, 12)}</code> : "Awaiting revision"}</dd></div>
-            <div><dt>Valid claim</dt><dd>{valid ? valid.executedCents ? "Refund executed" : outcome[valid.outcome] : "Awaiting retest"}</dd></div>
+            <div><dt>Valid claim</dt><dd>{valid ? valid.outcome === "incomplete" ? "Incomplete" : valid.executedCents ? "Refund executed" : outcome[valid.outcome] : "Awaiting retest"}</dd></div>
             <div><dt>Review status</dt><dd>{reviewed ? "Reviewed" : run?.review ? "Awaiting review" : "Awaiting results"}</dd></div>
           </dl>
           {run?.review ? <details className="review-recommendation"><summary>Evaluator recommendation</summary>
@@ -203,10 +211,10 @@ export function Report({ run, events, actionLocked, review, open, labHref, evide
             : <p>{incomplete ? "Open the incomplete case for its recorded reason." : "The evaluator publishes a recommendation when the shift finishes."}</p>}
           {run?.status === "complete" && <p>Review records your decision for this lab run.</p>}
           <div className="report-actions">
-            {run?.actions.canReview && run.mode !== "replay" && !reviewed &&
-              <button className="button report-action" onClick={review} disabled={actionLocked}><Check size={17} />{preview ? "Mark reviewed in preview" : "Mark reviewed"}</button>}
+            <button className="button report-action primary" onClick={review} disabled={!!reviewReason} aria-describedby={reviewReason ? "review-reason" : undefined}><Check size={17} />{preview ? "Mark reviewed in preview" : "Mark reviewed"}</button>
             {shareUrl && <button className="button report-action" onClick={copy}><Link2 size={17} />Copy run link</button>}
           </div>
+          {reviewReason && <p id="review-reason" role="status">{reviewReason}</p>}
           <p role="status">{copyStatus}</p>
           {showLink && <input aria-label="Run link" readOnly value={shareUrl} onFocus={event => event.currentTarget.select()} />}
         </section>

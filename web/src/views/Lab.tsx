@@ -1,16 +1,17 @@
-import { Activity, ArrowRight, Check, ClipboardList, Play, ShieldCheck } from "lucide-react";
+import { Activity, ArrowRight, ClipboardList, Play, ShieldCheck } from "lucide-react";
 import type { RunEvent, RunView, Stage as StageId } from "../contract";
 import { EventRow } from "../components/EvidenceDrawer";
 import type { OpenEvidence } from "../components/EvidenceDrawer";
 import { PlaybackControls, useRecordedPlayback } from "../components/Playback";
 import { Stage } from "../components/Stage";
+import { StageProgress } from "../components/StageProgress";
 import { VoiceSlot } from "../components/VoiceSlot";
-import { authorization, currency, phase, provenance, stages, statusLabel } from "../components/runLabels";
+import { authorization, currency, phase, provenance, statusLabel } from "../components/runLabels";
 
 export function Lab({
-  run, events, start, startLocked, startLabel, evidenceHref, reportHref, open, recordedHref, candidateName, preview,
+  run, events, start, startLocked, startLabel, startReason, evidenceHref, reportHref, open, recordedHref, candidateName, preview,
 }: {
-  run?: RunView; events: RunEvent[]; start: () => void; startLocked: boolean; startLabel: string;
+  run?: RunView; events: RunEvent[]; start: () => void; startLocked: boolean; startLabel: string; startReason?: string;
   evidenceHref: string; reportHref: string; open: OpenEvidence; recordedHref?: string;
   candidateName: string; preview: boolean;
 }) {
@@ -19,9 +20,10 @@ export function Lab({
   const stage = run?.mode === "replay" && playback.shown < events.length
     ? shown.at(-1)?.stage ?? "baseline"
     : run?.status === "failed" ? shown.at(-1)?.stage : run ? phase[run.status] : undefined;
-  const activeIndex = stages.findIndex(item => item.id === stage);
   const active = run?.status === "queued" || run?.status === "baseline_running"
     || run?.status === "investigating" || run?.status === "retest_running";
+  const canInspect = run?.status === "investigating" || run?.status === "ready_to_retest"
+    || (run?.status === "failed" && events.some(event => event.stage !== "baseline"));
   const focusStage: StageId = run?.mode === "replay" ? shown.at(-1)?.stage ?? "baseline"
     : stage === "retest" || stage === "review" ? "retest" : "baseline";
   const floorEvents = shown.filter(event => event.stage === focusStage && (!event.caseId || event.caseId === "monitor-conflict"));
@@ -67,26 +69,36 @@ export function Lab({
             <strong>{requestLabel}</strong><span>{authLabel}</span><span>{ledgerLabel}</span>
           </div>}
           <div className="proof-action">
-            {!run ? <button className="button primary" disabled={startLocked} onClick={start}><Play size={18} />{startLabel}<ArrowRight size={18} /></button>
-              : run.status === "complete" ? <a className="button primary" href={reportHref}>Open readiness report<ArrowRight size={18} /></a>
-              : run.status === "ready_to_retest" || run.status === "failed" ? <a className="button primary" href={evidenceHref}>Inspect the evidence<ArrowRight size={18} /></a>
-              : <p className="activity-status"><span className="status-dot" data-active />{run.status === "investigating" ? "13 is reviewing the tool history." : statusLabel[run.status]}</p>}
+            {!run ? <>
+              <button className="button primary" disabled={startLocked} aria-describedby={startReason ? "start-reason" : undefined} onClick={start}><Play size={18} />{startLabel}<ArrowRight size={18} /></button>
+              {startReason && <p className="action-reason" id="start-reason" role="status">{startReason}</p>}
+            </> : run.status === "complete" ? <a className="button primary" href={reportHref}>View report<ArrowRight size={18} /></a>
+              : run.status === "retest_running" ? <>
+                <button className="button primary" disabled aria-describedby="lab-wait">View report<ArrowRight size={18} /></button>
+                <p className="action-reason" id="lab-wait" role="status">The retest is running.</p>
+              </> : canInspect ? <>
+                <a className="button primary" href={evidenceHref}>Inspect the evidence<ArrowRight size={18} /></a>
+                {run.status === "investigating" && <p className="action-reason" role="status">13 is reviewing the tool history.</p>}
+              </> : <>
+                <button className="button primary" disabled aria-describedby="lab-wait">Inspect the evidence<ArrowRight size={18} /></button>
+                <p className="action-reason" id="lab-wait" role="status">{run.status === "failed" ? "The shift ended before the baseline finished."
+                  : `${statusLabel[run.status]} · Available when the baseline finishes.`}</p>
+                {run.status === "failed" && events.length > 0 && <a className="text-action" href={evidenceHref}>Open partial evidence<ArrowRight size={16} /></a>}
+              </>}
             {!run && recordedHref && <a className="text-action" href={recordedHref}>Open recorded run <ArrowRight size={16} /></a>}
           </div>
         </section>
       </div>
-      <ol className="stage-track" aria-label="Shift stages">
-        {stages.map((item, index) => (
-          <li key={item.id} aria-current={stage === item.id ? "step" : undefined} data-passed={index < activeIndex}>
-            <span className="step-index">{index < activeIndex ? <Check size={15} /> : index + 1}</span><span>{item.name}</span>
-          </li>
-        ))}
-      </ol>
+      <StageProgress stage={stage ?? (!run ? "baseline" : undefined)} />
       {run?.mode === "replay" && <PlaybackControls playback={playback} />}
+      {run && <section className="voice-case" aria-label="Valid claim">
+        <p className="proof-kicker">Valid claim · Cracked monitor</p>
+        <VoiceSlot run={run} preview={preview} />
+      </section>}
       <div className="lab-footer">
         <p><ShieldCheck size={16} /> Refund authorization and fake ledger execution are tracked separately.</p>
       </div>
-      <VoiceSlot run={run} preview={preview} />
+      {!run && <VoiceSlot run={run} preview={preview} />}
     </>
   );
 }
