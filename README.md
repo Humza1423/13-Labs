@@ -47,6 +47,4 @@ Provider ports (`DefenderDriver`, `TraceSink`, `AuthorizationGate`) live in `src
 
 Lane routers register automatically: add `routes/runs.py`, `routes/voice.py` or `routes/ledger.py` exposing a FastAPI `router`, and `routes/__init__.py` picks it up.
 
-## Credits
 
-Stage, sprites, evidence, playback and comparison pieces are adapted from **Alibi** by the Alibi team, [rayanali2/HackPrinceton](https://github.com/rayanali2/HackPrinceton) at commit `f109e4d5c6720ffa433aa65b0800994afbe416d7` (branch `codex/alibi-build`), reused with organizer clearance. UI composition draws on the MIT-licensed 21st.dev components [Glassy Dashboard](https://docs.21st.dev/%40automateflows/components/glassy-dashboard) and [Finance Bento](https://preview.21st.dev/%40romanvasnev/components/finance-bento); their license notices are kept alongside the ported code.
